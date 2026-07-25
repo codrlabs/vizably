@@ -28,13 +28,14 @@ describe('LandingView', () => {
     await waitFor(() => expect(onScan).toHaveBeenCalledWith('https://example.com'))
   })
 
-  it('shows the scanning state while the scan promise is pending', async () => {
+  it('shows scanning progress stages while the scan promise is pending', async () => {
     let resolve
     const onScan = vi.fn(() => new Promise((r) => { resolve = r }))
     renderLanding(onScan)
     typeAndScan('https://example.com')
 
-    expect(await screen.findByText(/Scanning/)).toBeInTheDocument()
+    expect(await screen.findByRole('status')).toHaveTextContent(/Scanning/)
+    expect(screen.getByText(/Connecting to the target website/)).toBeInTheDocument()
     resolve()
   })
 

@@ -15,6 +15,7 @@ import DashboardView from './views/DashboardView'
 import AccountView from './views/AccountView'
 import LegalView from './views/LegalView'
 import NotFoundView from './views/NotFoundView'
+import ScanProgressIndicator from './components/ScanProgressIndicator'
 import { apiClient } from './lib/apiClient'
 import { useScan } from './hooks/useScan'
 import { toScanViewModel } from './lib/scanAdapter'
@@ -46,14 +47,9 @@ function routeKeyFor(pathname) {
   return entry ? entry[0] : null
 }
 
-/** Centered spinner used while a deep-linked scan is re-running. */
+/** Centered staged progress while a deep-linked scan is re-running. */
 function ScanningIndicator({ url }) {
-  return (
-    <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 18, padding: '64px 24px' }}>
-      <div className="ev-spin" style={{ width: 34, height: 34, borderRadius: '50%', border: '3px solid var(--blue-100)', borderTopColor: 'var(--accent)' }} />
-      <div style={{ font: 'var(--font-label)', color: 'var(--text-body)' }}>Scanning {url}…</div>
-    </div>
-  )
+  return <ScanProgressIndicator url={url} fill />
 }
 
 function AuthLoadingIndicator() {
