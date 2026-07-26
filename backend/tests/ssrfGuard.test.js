@@ -31,3 +31,10 @@ test('rejects loopback and private hosts', () => {
   assert.equal(validate('http://172.16.0.1').ok, false);
   assert.equal(validate('http://169.254.169.254').ok, false);
 });
+
+test('rejects IPv6 loopback, ULA, and link-local hosts', () => {
+  assert.equal(validate('http://[::1]/').ok, false);
+  assert.equal(validate('http://[fc00::1]/').ok, false);
+  assert.equal(validate('http://[fd12:3456:789a::1]/').ok, false);
+  assert.equal(validate('http://[fe80::1]/').ok, false);
+});
