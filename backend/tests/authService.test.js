@@ -67,25 +67,74 @@ test('getGitHubClient returns authenticated Octokit', () => {
   assert.equal(typeof client.rest.repos.listForAuthenticatedUser, 'function');
 });
 
-test('getGoogleDriveClient returns null until Phase 3', () => {
+test('getGoogleDriveClient returns null without Google tokens', () => {
   const authService = new AuthService({
     sessionSecret: TEST_SESSION_SECRET,
     encryptionKey: TEST_ENCRYPTION_KEY,
+    googleClientId: 'google-client-id.apps.googleusercontent.com',
+    googleClientSecret: 'google-client-secret',
+    googleCallbackUrl: 'http://localhost:3000/api/auth/google/callback',
   });
 
   assert.equal(authService.getGoogleDriveClient({}), null);
 });
 
-test('refreshGoogleToken rejects until Phase 3', async () => {
+test('getGoogleDriveClient returns Drive client with setCredentials', () => {
   const authService = new AuthService({
     sessionSecret: TEST_SESSION_SECRET,
     encryptionKey: TEST_ENCRYPTION_KEY,
+    googleClientId: 'google-client-id.apps.googleusercontent.com',
+    googleClientSecret: 'google-client-secret',
+    googleCallbackUrl: 'http://localhost:3000/api/auth/google/callback',
+  });
+
+  const client = authService.getGoogleDriveClient({
+    tokens: {
+      google: {
+        accessToken: authService.encrypt('ya29.access'),
+        refreshToken: authService.encrypt('1//refresh'),
+      },
+    },
+  });
+
+  assert.ok(client);
+  assert.equal(typeof client.files.list, 'function');
+});
+
+test('refreshGoogleToken rejects without a refresh token', async () => {
+  const authService = new AuthService({
+    sessionSecret: TEST_SESSION_SECRET,
+    encryptionKey: TEST_ENCRYPTION_KEY,
+    googleClientId: 'google-client-id.apps.googleusercontent.com',
+    googleClientSecret: 'google-client-secret',
+    googleCallbackUrl: 'http://localhost:3000/api/auth/google/callback',
   });
 
   await assert.rejects(
-    () => authService.refreshGoogleToken({}),
-    /not available until Phase 3/,
+    () => authService.refreshGoogleToken({ tokens: { google: { accessToken: 'x' } } }),
+    /refresh token is not available/,
   );
+});
+
+test('clientsFor builds driveClient when Google token present', async () => {
+  const authService = new AuthService({
+    sessionSecret: TEST_SESSION_SECRET,
+    encryptionKey: TEST_ENCRYPTION_KEY,
+    googleClientId: 'google-client-id.apps.googleusercontent.com',
+    googleClientSecret: 'google-client-secret',
+    googleCallbackUrl: 'http://localhost:3000/api/auth/google/callback',
+  });
+
+  const clients = await authService.clientsFor({
+    tokens: {
+      google: {
+        accessToken: authService.encrypt('ya29.access'),
+      },
+    },
+  });
+
+  assert.ok(clients.driveClient);
+  assert.equal(typeof clients.driveClient.files.list, 'function');
 });
 
 test('clientsFor builds githubClient only when token present', async () => {

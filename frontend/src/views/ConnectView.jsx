@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Button, Card } from '../design-system'
 import { Ico, GoogleMark } from '../lib/icons'
 import { apiClient } from '../lib/apiClient'
+import { openDriveFolderPicker } from '../lib/googlePicker'
 import { PROVIDERS } from '../data/placeholders'
 
 const STATUS_UI = {
@@ -69,6 +70,14 @@ function storageRefFromRepo(repo) {
   }
 }
 
+function storageRefFromFolder(folder) {
+  return {
+    id: folder.id,
+    name: folder.name,
+    url: folder.url || undefined,
+  }
+}
+
 function findRepoByName(storages, name) {
   const trimmed = name.trim()
   if (!trimmed) return null
@@ -81,7 +90,8 @@ function findRepoByName(storages, name) {
 }
 
 /**
- * Connect storage — pick a GitHub repo, run fit-check, load or init account.
+ * Connect storage — pick a GitHub repo or Google Drive folder, run fit-check,
+ * load or init account.
  *
  * @param {object} props
  * @param {'github' | 'google'} props.provider
@@ -89,6 +99,7 @@ function findRepoByName(storages, name) {
  * @param {() => void} props.onCancel
  * @param {string} [props.storageError]
  * @param {import('../lib/apiClient').ApiClient} [props.client]
+ * @param {typeof openDriveFolderPicker} [props.openFolderPicker]
  */
 export default function ConnectView({
   provider,
@@ -96,14 +107,18 @@ export default function ConnectView({
   onCancel,
   storageError = null,
   client = apiClient,
+  openFolderPicker = openDriveFolderPicker,
 }) {
   const pv = PROVIDERS[provider] || PROVIDERS.github
   const isGitHub = provider === 'github'
+  const isGoogle = provider === 'google'
 
   const [mode, setMode] = useState('existing')
   const [newRepoName, setNewRepoName] = useState(pv.dest)
   const [storages, setStorages] = useState([])
   const [selectedId, setSelectedId] = useState('')
+  const [pickedFolder, setPickedFolder] = useState(null)
+  const [pickingFolder, setPickingFolder] = useState(false)
   const [validation, setValidation] = useState(null)
   const [loadingRepos, setLoadingRepos] = useState(false)
   const [validating, setValidating] = useState(false)
@@ -117,13 +132,20 @@ export default function ConnectView({
   )
 
   const activeStorageRef = useMemo(() => {
+    if (isGoogle) {
+      if (mode === 'existing') {
+        return pickedFolder ? storageRefFromFolder(pickedFolder) : null
+      }
+      const name = newRepoName.trim()
+      return name ? { name } : null
+    }
     if (!isGitHub) return null
     if (mode === 'existing') {
       return selectedRepo ? storageRefFromRepo(selectedRepo) : null
     }
     const match = findRepoByName(storages, newRepoName)
     return match ? storageRefFromRepo(match) : null
-  }, [isGitHub, mode, selectedRepo, storages, newRepoName])
+  }, [isGoogle, isGitHub, mode, pickedFolder, selectedRepo, storages, newRepoName])
 
   const loadStorages = useCallback(async () => {
     if (!isGitHub) return
@@ -151,15 +173,22 @@ export default function ConnectView({
     setError(storageError)
   }, [storageError])
 
+  useEffect(() => {
+    setPickedFolder(null)
+    setValidation(null)
+    setNewRepoName(pv.dest)
+    setMode('existing')
+  }, [provider, pv.dest])
+
   const runValidation = useCallback(async (storageRef) => {
-    if (!storageRef) {
+    if (!storageRef?.id) {
       setValidation(null)
       return
     }
     setValidating(true)
     setError(null)
     try {
-      const result = await client.validateStorage('github', storageRef)
+      const result = await client.validateStorage(provider, storageRef)
       setValidation(result)
     } catch (err) {
       setValidation(null)
@@ -167,40 +196,85 @@ export default function ConnectView({
     } finally {
       setValidating(false)
     }
-  }, [client])
+  }, [client, provider])
 
   useEffect(() => {
-    if (!isGitHub || !activeStorageRef) {
+    // New Google folders are created on init — no fit-check until they exist.
+    if (isGoogle && mode === 'new') {
+      setValidation(null)
+      return
+    }
+    if (!activeStorageRef?.id) {
       setValidation(null)
       return
     }
     runValidation(activeStorageRef)
-  }, [isGitHub, activeStorageRef, runValidation])
+  }, [isGoogle, mode, activeStorageRef, runValidation])
 
   const statusUi = validation ? STATUS_UI[validation.status] : null
-  const proposedAction = statusUi?.action ?? null
+  const proposedAction =
+    isGoogle && mode === 'new' && activeStorageRef
+      ? 'init'
+      : (statusUi?.action ?? null)
   const canWrite = validation?.capabilities?.canWrite !== false
   const initBlocked = proposedAction === 'init' && validation && !canWrite
-  const confirmBlocked =
-    !validation ||
-    !proposedAction ||
-    validation.status === 'incompatible' ||
-    validation.status === 'invalid' ||
-    initBlocked ||
-    (mode === 'new' && !activeStorageRef)
+
+  const confirmBlocked = isGoogle && mode === 'new'
+    ? !activeStorageRef || confirming
+    : (
+      !validation ||
+      !proposedAction ||
+      validation.status === 'incompatible' ||
+      validation.status === 'invalid' ||
+      initBlocked ||
+      (mode === 'new' && !activeStorageRef)
+    )
 
   const confirmLabel = useMemo(() => {
-    if (mode === 'new' && !activeStorageRef) {
+    if (isGoogle && mode === 'new') {
+      return activeStorageRef ? 'Create folder & continue' : 'Enter a folder name'
+    }
+    if (isGitHub && mode === 'new' && !activeStorageRef) {
       return 'Create repo on GitHub first'
     }
     if (statusUi?.button) return statusUi.button
     return 'Continue'
-  }, [mode, activeStorageRef, statusUi])
+  }, [isGoogle, isGitHub, mode, activeStorageRef, statusUi])
+
+  const handlePickFolder = async () => {
+    setPickingFolder(true)
+    setError(null)
+    try {
+      const [config, tokenPayload] = await Promise.all([
+        client.getAuthConfig(),
+        client.getGoogleAccessToken(),
+      ])
+      if (!config.googleClientId) {
+        throw new Error('Google OAuth client id is not configured on the server')
+      }
+      if (!tokenPayload.accessToken) {
+        throw new Error('Google access token unavailable — sign out and sign in again')
+      }
+      const folder = await openFolderPicker({
+        clientId: config.googleClientId,
+        accessToken: tokenPayload.accessToken,
+        projectNumber: config.googleCloudProjectNumber,
+      })
+      if (folder) {
+        setPickedFolder(folder)
+        setMode('existing')
+      }
+    } catch (err) {
+      setError(err.message || 'Failed to open Google Picker')
+    } finally {
+      setPickingFolder(false)
+    }
+  }
 
   const handleConfirm = async () => {
     if (confirmBlocked || !activeStorageRef || !proposedAction) return
 
-    if (mode === 'new' && !activeStorageRef) {
+    if (isGitHub && mode === 'new' && !activeStorageRef) {
       setError(
         `Create "${newRepoName.trim()}" on GitHub, install the Vizably app on it, then refresh the list.`,
       )
@@ -210,7 +284,7 @@ export default function ConnectView({
     setConfirming(true)
     setError(null)
     try {
-      await client.setupStorage('github', activeStorageRef, proposedAction)
+      await client.setupStorage(provider, activeStorageRef, proposedAction)
       onDone()
     } catch (err) {
       setError(err.message || 'Failed to connect storage')
@@ -219,7 +293,7 @@ export default function ConnectView({
     }
   }
 
-  const providerIcon = provider === 'google' ? GoogleMark(20) : Ico('Github', 20)
+  const providerIcon = isGoogle ? GoogleMark(20) : Ico('Github', 20)
 
   const Option = ({ id, icon, title, desc, children }) => {
     const active = mode === id
@@ -282,32 +356,6 @@ export default function ConnectView({
             </p>
             {active && children && <div style={{ marginTop: 12 }}>{children}</div>}
           </div>
-        </div>
-      </div>
-    )
-  }
-
-  if (!isGitHub) {
-    return (
-      <div
-        style={{
-          flex: 1,
-          display: 'flex',
-          alignItems: 'flex-start',
-          justifyContent: 'center',
-          padding: '52px 24px 72px',
-        }}
-      >
-        <div style={{ width: '100%', maxWidth: 460, textAlign: 'center' }}>
-          <h1 style={{ fontSize: 'var(--text-xl)', margin: '0 0 8px' }}>
-            Google sign-in coming in Phase 3
-          </h1>
-          <p style={{ color: 'var(--text-muted)', fontSize: 'var(--text-sm)', lineHeight: 1.5 }}>
-            Google Drive storage uses the Google Picker and is not wired yet. Use GitHub for now.
-          </p>
-          <Button variant="secondary" size="lg" onClick={onCancel} style={{ marginTop: 20 }}>
-            Back
-          </Button>
         </div>
       </div>
     )
@@ -383,7 +431,11 @@ export default function ConnectView({
               id="new"
               icon="Plus"
               title={`Create a new ${pv.unit}`}
-              desc={`Initialize a fresh private ${pv.unitShort} for Vizably (must exist on GitHub first).`}
+              desc={
+                isGoogle
+                  ? 'Create a new Drive folder and initialize it for Vizably.'
+                  : `Initialize a fresh private ${pv.unitShort} for Vizably (must exist on GitHub first).`
+              }
             >
               <label
                 style={{
@@ -424,7 +476,7 @@ export default function ConnectView({
                   }}
                 />
               </div>
-              {mode === 'new' && !activeStorageRef && newRepoName.trim() && (
+              {isGitHub && mode === 'new' && !activeStorageRef && newRepoName.trim() && (
                 <p style={{ fontSize: 'var(--text-xs)', color: 'var(--text-muted)', margin: '8px 0 0' }}>
                   Create this repository on GitHub, install the Vizably app on it, then{' '}
                   <button
@@ -454,9 +506,40 @@ export default function ConnectView({
               id="existing"
               icon="FolderOpen"
               title={`Use an existing ${pv.unit}`}
-              desc={`Pick ${pv.article} ${pv.unit} from your GitHub account.`}
+              desc={
+                isGoogle
+                  ? 'Open Google Picker and choose a Drive folder.'
+                  : `Pick ${pv.article} ${pv.unit} from your GitHub account.`
+              }
             >
-              {loadingRepos ? (
+              {isGoogle ? (
+                <>
+                  {pickedFolder ? (
+                    <p style={{ fontSize: 'var(--text-sm)', color: 'var(--text-strong)', margin: '0 0 8px' }}>
+                      Selected: <strong>{pickedFolder.name}</strong>
+                    </p>
+                  ) : (
+                    <p style={{ fontSize: 'var(--text-sm)', color: 'var(--text-muted)', margin: '0 0 8px' }}>
+                      No folder selected yet.
+                    </p>
+                  )}
+                  <Button
+                    variant="secondary"
+                    size="md"
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      handlePickFolder()
+                    }}
+                    disabled={pickingFolder}
+                  >
+                    {pickingFolder
+                      ? 'Opening Picker…'
+                      : pickedFolder
+                        ? 'Choose a different folder'
+                        : 'Choose folder in Google Drive'}
+                  </Button>
+                </>
+              ) : loadingRepos ? (
                 <p style={{ fontSize: 'var(--text-sm)', color: 'var(--text-muted)', margin: 0 }}>
                   Loading repositories…
                 </p>
@@ -505,25 +588,27 @@ export default function ConnectView({
                   </span>
                 </div>
               )}
-              <button
-                type="button"
-                onClick={(e) => {
-                  e.stopPropagation()
-                  loadStorages()
-                }}
-                style={{
-                  marginTop: 8,
-                  background: 'none',
-                  border: 'none',
-                  padding: 0,
-                  color: 'var(--text-link)',
-                  cursor: 'pointer',
-                  fontSize: 'var(--text-xs)',
-                  textDecoration: 'underline',
-                }}
-              >
-                Refresh repository list
-              </button>
+              {isGitHub && (
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    loadStorages()
+                  }}
+                  style={{
+                    marginTop: 8,
+                    background: 'none',
+                    border: 'none',
+                    padding: 0,
+                    color: 'var(--text-link)',
+                    cursor: 'pointer',
+                    fontSize: 'var(--text-xs)',
+                    textDecoration: 'underline',
+                  }}
+                >
+                  Refresh repository list
+                </button>
+              )}
             </Option>
           </div>
         </Card>
@@ -534,7 +619,26 @@ export default function ConnectView({
           </p>
         )}
 
-        {validation && statusUi && !validating && (
+        {isGoogle && mode === 'new' && activeStorageRef && (
+          <div
+            style={{
+              marginTop: 14,
+              padding: '12px 14px',
+              borderRadius: 'var(--radius-md)',
+              background: 'var(--bg-inset)',
+              border: '1px solid var(--border-default)',
+            }}
+          >
+            <div style={{ font: 'var(--font-label)', color: 'var(--text-strong)' }}>
+              Ready to create
+            </div>
+            <p style={{ fontSize: 'var(--text-sm)', color: 'var(--text-body)', margin: '6px 0 0', lineHeight: 1.45 }}>
+              We&apos;ll create &ldquo;{activeStorageRef.name}&rdquo; in your Drive and set it up for Vizably.
+            </p>
+          </div>
+        )}
+
+        {validation && statusUi && !validating && !(isGoogle && mode === 'new') && (
           <div
             style={{
               marginTop: 14,
@@ -606,7 +710,7 @@ export default function ConnectView({
             variant="primary"
             size="lg"
             style={{ flex: 1 }}
-            disabled={confirmBlocked || confirming || validating}
+            disabled={confirmBlocked || confirming || validating || pickingFolder}
             onClick={handleConfirm}
             iconRight={Ico('ArrowRight', 17, '#fff')}
           >

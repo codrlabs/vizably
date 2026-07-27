@@ -10,8 +10,6 @@
  * @typedef {import('../../../shared/types.js').Problem} Problem
  */
 
-const GOOGLE_LOGIN_UNAVAILABLE = 'Google sign-in is not available until Phase 3'
-
 export class ApiClient {
   /**
    * @param {object} [opts]
@@ -63,9 +61,32 @@ export class ApiClient {
     globalThis.location.href = `${this.baseUrl}/api/auth/github`
   }
 
-  /** Phase 3 stub — Google sign-in is not wired in Phase 2. */
+  /** Full-page redirect to Google OAuth. */
   googleLogin() {
-    throw new Error(GOOGLE_LOGIN_UNAVAILABLE)
+    if (typeof globalThis.location === 'undefined') {
+      return
+    }
+    globalThis.location.href = `${this.baseUrl}/api/auth/google`
+  }
+
+  /**
+   * Public Google Picker config (client id + browser API key + project number).
+   * @returns {Promise<{
+   *   googleClientId: string | null,
+   *   googlePickerApiKey: string | null,
+   *   googleCloudProjectNumber: string | null,
+   * }>}
+   */
+  getAuthConfig() {
+    return this._request('/api/auth/config')
+  }
+
+  /**
+   * Session-bound Google access token for the Picker.
+   * @returns {Promise<{ accessToken: string }>}
+   */
+  getGoogleAccessToken() {
+    return this._request('/api/auth/google/token')
   }
 
   /** @returns {Promise<{ authenticated: boolean, user: object | null }>} */

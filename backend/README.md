@@ -78,8 +78,7 @@ via `tests/helpers/testEnv.js`; never commit real secrets to the repo.
 MemoryStore. Restarts log everyone out; multiple server instances do not share
 sessions. Switch to a persistent store (Redis, etc.) before production deploy.
 
-Google OAuth and `GOOGLE_PICKER_API_KEY` are deferred to Phase 3 — not read by
-the server yet. Phase 5 placeholders (`JWT_SECRET`, `DATABASE_URL`) remain in
+Phase 5 placeholders (`JWT_SECRET`, `DATABASE_URL`) remain in
 [`.env.example`](.env.example) comments only.
 
 ### GitHub App setup (Phase 1)
@@ -135,6 +134,88 @@ codrlabs/vizably org or equivalent) with:
 
 See also [`docs/guides/auth_storage_guide/githubGoogleAuthStorageImplementation.md`](../docs/guides/auth_storage_guide/githubGoogleAuthStorageImplementation.md) § OAuth App Configuration.
 
+### Google OAuth setup (Phase 3)
+
+Phase 0 locked **`drive.file` only** (no `drive.metadata.readonly`). Users pick
+an existing folder with the **Google Picker** (client-side); the backend never
+lists Drive folders.
+
+1. [Google Cloud Console](https://console.cloud.google.com/) → create or select a project.
+2. **APIs & Services → Library** → enable **Google Drive API** and **Google Picker API**.
+3. **APIs & Services → OAuth consent screen** → External (or Internal for Workspace).
+   Add scopes: `openid`, `email`, `profile`, and
+   `https://www.googleapis.com/auth/drive.file`.
+   Choose a **publishing status**:
+   - **Testing** — only emails under **Test users** can sign in. Add your own
+     Google account there (or use **Internal** for Workspace). Missing yourself
+     from Test users causes Google’s **`Error 403: access_denied`**.
+   - **In production** — any Google account can start the consent flow. Until
+     Google **verifies** the app for `drive.file` (a sensitive scope), users see
+     an **unverified app** warning; for local/dev click **Advanced → Go to
+     {app} (unsafe)** and continue. Real public traffic needs OAuth verification
+     (privacy policy, demo video, scope justification) — submit that before
+     shipping Vizably to end users.
+4. **APIs & Services → Credentials → Create credentials → OAuth client ID** →
+   Application type **Web application**.
+   - Authorized JavaScript origins: `http://localhost:5173` (required for
+     Picker) and `http://localhost:3000` if needed.
+   - Authorized redirect URI:
+     `http://localhost:3000/api/auth/google/callback`
+5. Copy Client ID + Client secret into `backend/.env`:
+   - `GOOGLE_CLIENT_ID`
+   - `GOOGLE_CLIENT_SECRET`
+   - `GOOGLE_REDIRECT_URI=http://localhost:3000/api/auth/google/callback`
+6. Create a **Browser API key** for Picker (see below) → `GOOGLE_PICKER_API_KEY`.
+7. Copy the **Project number** from **IAM & Admin → Settings** into
+   `GOOGLE_CLOUD_PROJECT_NUMBER` (digits only). Picker `setAppId` needs this for
+   `drive.file`; a wrong value often shows a **blank white Picker**. The OAuth
+   client id prefix is usually the same number — set it explicitly if unsure.
+
+**Troubleshooting Google sign-in**
+
+| Symptom | Likely cause | Fix |
+| ------- | ------------ | --- |
+| `Error 403: access_denied` while status is **Testing** | Account not a test user | [Consent screen](https://console.cloud.google.com/apis/credentials/consent) → **Test users** → add your Gmail → retry (incognito if Google cached a deny) |
+| `Error 403: access_denied` after publish | Cached deny, wrong project, or scope not on consent screen | Confirm scopes include `drive.file`; redirect URI matches `.env`; retry in a fresh browser profile |
+| “Google hasn’t verified this app” | Published but unverified (`drive.file`) | Expected for local/dev — use **Advanced → Continue**; submit verification before production launch |
+| `redirect_uri_mismatch` | Callback URL not registered | Add exactly `http://localhost:3000/api/auth/google/callback` on the OAuth client |
+| Picker opens **blank / white** | Restricted API key, wrong project number, or missing JS origin | Picker no longer sends `GOOGLE_PICKER_API_KEY` by default (session OAuth token is enough). Ensure `GOOGLE_CLOUD_PROJECT_NUMBER` and OAuth **Authorized JavaScript origins** include `http://localhost:5173`. Close DevTools if the iframe stays blank. |
+| Picker: **“The API developer key is invalid”** | Key restrictions reject the Vite origin | Leave `GOOGLE_PICKER_API_KEY` unused for Picker (current default). If you force `useDeveloperKey`, fix referrers / enable **Google Picker API**. Create-folder can still work (OAuth-only). |
+| `Invalid field selection etag` | Old Drive client requesting `fields=etag` | Fixed in storage service — Drive v3 returns ETag only on HTTP headers |
+
+`GET /api/auth/config` returns
+`{ googleClientId, googlePickerApiKey, googleCloudProjectNumber }` for the
+frontend Picker. Restrict the API key by HTTP referrer in Cloud Console.
+
+#### Getting `GOOGLE_PICKER_API_KEY`
+
+This is a **browser API key** (Credentials → API key), not the OAuth client
+secret. Create-folder does not use it; only Google Picker does.
+
+1. Cloud Console → **APIs & Services → Library** → enable **Google Picker API**
+   (and **Google Drive API** if not already on) in the **same project** as your
+   OAuth client.
+2. **APIs & Services → Credentials → Create credentials → API key**.
+3. Open the new key → **Application restrictions → HTTP referrers (web sites)**.
+   Add exactly (Vite serves the Picker from the frontend origin):
+   - `http://localhost:5173/*`
+   - `http://127.0.0.1:5173/*` (if you open the app that way)
+   - `http://localhost:3000/*` (optional)
+   - your production frontend origin when you deploy (e.g. `https://app.vizably.example/*`)
+4. **API restrictions → Restrict key** → include at least **Google Picker API**.
+   If the Picker still fails, temporarily set API restrictions to **Don’t
+   restrict key** to confirm the key itself is fine, then re-add Picker (+ Drive
+   if needed).
+5. Save → wait a minute for Google to propagate → copy the key into
+   `backend/.env` as `GOOGLE_PICKER_API_KEY` → **restart the backend**.
+6. Never commit the key. Treat it as public-ish (it ships to the browser) but
+   always keep referrer + API restrictions on for real deploys.
+
+Sign-in flow: `GET /api/auth/google` → Google consent → callback → frontend
+`/connect?provider=google`. Folder selection is Picker-only; then
+`POST /api/auth/storage/validate` and `POST /api/auth/storage` with
+`storageRef: { id: "<folderId>", name: "…" }`.
+
 ## Endpoints
 
 | Method | Path                      | Notes                                          |
@@ -142,7 +223,10 @@ See also [`docs/guides/auth_storage_guide/githubGoogleAuthStorageImplementation.
 | GET    | `/health`                 | liveness probe                                 |
 | GET    | `/api/auth/github`        | start GitHub OAuth                             |
 | GET    | `/api/auth/github/callback` | GitHub OAuth callback                        |
-| GET    | `/api/auth/google`        | stub (501) until Phase 3                       |
+| GET    | `/api/auth/google`        | start Google OAuth (`drive.file`)              |
+| GET    | `/api/auth/google/callback` | Google OAuth callback                        |
+| GET    | `/api/auth/config`        | `{ googleClientId, googlePickerApiKey, googleCloudProjectNumber }` |
+| GET    | `/api/auth/google/token`  | session Google access token (Picker only)      |
 | GET    | `/api/auth/storages`      | list GitHub repos (`?provider=github`)         |
 | POST   | `/api/auth/storage/validate` | fit-check selected storage                  |
 | POST   | `/api/auth/storage`       | load or init account storage                   |

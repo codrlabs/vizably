@@ -10,6 +10,12 @@ const REPO = {
   html_url: 'https://github.com/sam/site-audits',
 }
 
+const FOLDER = {
+  id: 'folder-1',
+  name: 'Vizably scans',
+  url: 'https://drive.google.com/drive/folders/folder-1',
+}
+
 function mockClient(overrides = {}) {
   return {
     listStorages: vi.fn().mockResolvedValue({ provider: 'github', storages: [REPO] }),
@@ -20,6 +26,12 @@ function mockClient(overrides = {}) {
       manifestSummary: { scanCount: 3, schemaVersion: 1, accountId: 'a1' },
     }),
     setupStorage: vi.fn().mockResolvedValue({ success: true }),
+    getAuthConfig: vi.fn().mockResolvedValue({
+      googleClientId: '123456-abc.apps.googleusercontent.com',
+      googlePickerApiKey: 'picker-key',
+      googleCloudProjectNumber: '123456',
+    }),
+    getGoogleAccessToken: vi.fn().mockResolvedValue({ accessToken: 'ya29.token' }),
     ...overrides,
   }
 }
@@ -142,13 +154,65 @@ describe('ConnectView', () => {
     expect(button).toBeDisabled()
   })
 
-  it('shows Google deferred message for google provider', () => {
+  it('opens Google Picker and validates the chosen folder', async () => {
+    const client = mockClient()
+    const openFolderPicker = vi.fn().mockResolvedValue(FOLDER)
+
     render(
-      <ConnectView provider="google" onDone={vi.fn()} onCancel={vi.fn()} client={mockClient()} />,
+      <ConnectView
+        provider="google"
+        onDone={vi.fn()}
+        onCancel={vi.fn()}
+        client={client}
+        openFolderPicker={openFolderPicker}
+      />,
     )
 
-    expect(screen.getByText(/Phase 3/i)).toBeInTheDocument()
-    expect(screen.queryByText(/load my account/i)).not.toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: /choose folder in google drive/i }))
+
+    await waitFor(() =>
+      expect(openFolderPicker).toHaveBeenCalledWith({
+        clientId: '123456-abc.apps.googleusercontent.com',
+        accessToken: 'ya29.token',
+        projectNumber: '123456',
+      }),
+    )
+    await waitFor(() =>
+      expect(client.validateStorage).toHaveBeenCalledWith('google', {
+        id: FOLDER.id,
+        name: FOLDER.name,
+        url: FOLDER.url,
+      }),
+    )
+    expect(screen.getByText(/Selected:/i)).toBeInTheDocument()
+    expect(screen.getByText('Vizably account found')).toBeInTheDocument()
+  })
+
+  it('creates a new Google Drive folder via setupStorage init', async () => {
+    const onDone = vi.fn()
+    const client = mockClient()
+
+    render(
+      <ConnectView
+        provider="google"
+        onDone={onDone}
+        onCancel={vi.fn()}
+        client={client}
+        openFolderPicker={vi.fn()}
+      />,
+    )
+
+    fireEvent.click(screen.getByText(/Create a new folder/i))
+    const input = screen.getByDisplayValue('Vizably')
+    fireEvent.change(input, { target: { value: 'My Vizably' } })
+
+    const button = screen.getByRole('button', { name: /create folder & continue/i })
+    fireEvent.click(button)
+
+    await waitFor(() =>
+      expect(client.setupStorage).toHaveBeenCalledWith('google', { name: 'My Vizably' }, 'init'),
+    )
+    expect(onDone).toHaveBeenCalled()
   })
 
   it('renders storageError prop', async () => {

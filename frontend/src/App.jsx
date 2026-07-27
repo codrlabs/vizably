@@ -273,7 +273,10 @@ function AppRoutes() {
   }
 
   const auth = (p) => {
-    if (p === 'google') return
+    if (p === 'google') {
+      apiClient.googleLogin()
+      return
+    }
     apiClient.githubLogin()
   }
 
@@ -303,7 +306,7 @@ function AppRoutes() {
     const [params] = useSearchParams()
     const connectProvider = params.get('provider') || provider
     const storageError = params.get('error') === 'auth_failed'
-      ? 'GitHub sign-in failed. Try again.'
+      ? `${connectProvider === 'google' ? 'Google' : 'GitHub'} sign-in failed. Try again.`
       : null
 
     if (authLoading) return <AuthLoadingIndicator />

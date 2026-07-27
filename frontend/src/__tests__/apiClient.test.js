@@ -49,9 +49,33 @@ describe('ApiClient', () => {
     expect(globalThis.location.href).toBe('/api/auth/github')
   })
 
-  it('googleLogin throws until Phase 3', () => {
+  it('googleLogin redirects to the backend OAuth route', () => {
     const client = new ApiClient()
-    expect(() => client.googleLogin()).toThrow(/Phase 3/)
+    client.googleLogin()
+    expect(globalThis.location.href).toBe('/api/auth/google')
+  })
+
+  it('getAuthConfig calls GET /api/auth/config', async () => {
+    const fetchImpl = mockFetch({
+      googleClientId: 'client.apps.googleusercontent.com',
+      googlePickerApiKey: 'picker-key',
+    })
+    const client = new ApiClient({ fetchImpl })
+
+    const config = await client.getAuthConfig()
+
+    expect(fetchImpl).toHaveBeenCalledWith('/api/auth/config', expect.any(Object))
+    expect(config.googlePickerApiKey).toBe('picker-key')
+  })
+
+  it('getGoogleAccessToken calls GET /api/auth/google/token', async () => {
+    const fetchImpl = mockFetch({ accessToken: 'ya29.token' })
+    const client = new ApiClient({ fetchImpl })
+
+    const result = await client.getGoogleAccessToken()
+
+    expect(fetchImpl).toHaveBeenCalledWith('/api/auth/google/token', expect.any(Object))
+    expect(result.accessToken).toBe('ya29.token')
   })
 
   it('getAuthStatus calls GET /api/auth/status', async () => {

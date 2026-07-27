@@ -32,24 +32,87 @@ function makeAuthRouter({ authService, storageService }) {
     },
   );
 
-  router.get('/google', (_req, res) => {
-    res.status(501).json({
-      error: 'Google sign-in is not available until Phase 3',
+  router.get('/google', (req, res, next) => {
+    if (!authService.isGoogleConfigured()) {
+      return res.status(503).json({
+        error:
+          'Google sign-in is not configured. Set GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, and GOOGLE_REDIRECT_URI.',
+      });
+    }
+    req.session.authProvider = 'google';
+    return authService.authenticateGoogle()(req, res, next);
+  });
+
+  router.get(
+    '/google/callback',
+    (req, res, next) => {
+      if (!authService.isGoogleConfigured()) {
+        return res.status(503).json({
+          error: 'Google sign-in is not configured.',
+        });
+      }
+      return authService.authenticateGoogle({
+        failureRedirect: `${frontendOrigin}/connect?provider=google&error=auth_failed`,
+      })(req, res, next);
+    },
+    (req, res) => {
+      res.redirect(`${frontendOrigin}/connect?provider=google`);
+    },
+  );
+
+  /**
+   * Public config for client-side Google Picker (browser API key + OAuth client id).
+   * Restrict the key by HTTP referrer in Cloud Console.
+   */
+  router.get('/config', (_req, res) => {
+    return res.json({
+      googleClientId: authService.googleClientId || null,
+      googlePickerApiKey: authService.googlePickerApiKey || null,
+      googleCloudProjectNumber: authService.googleCloudProjectNumber || null,
     });
   });
 
-  router.get('/google/callback', (_req, res) => {
-    res.status(501).json({
-      error: 'Google sign-in is not available until Phase 3',
-    });
+  /**
+   * Short-lived Google access token for the Picker (session cookie auth).
+   * Never logged; only returned to the signed-in browser.
+   */
+  router.get('/google/token', requireAuth, async (req, res) => {
+    try {
+      if (req.user?.provider !== 'google') {
+        return res.status(400).json({ error: 'Not a Google session' });
+      }
+      if (!req.user?.tokens?.google?.accessToken) {
+        return res.status(400).json({ error: 'Google access token unavailable' });
+      }
+      if (req.user.tokens.google.refreshToken) {
+        try {
+          await authService.refreshGoogleToken(req.user);
+          await authService.persistUser(req);
+        } catch {
+          // Use the existing access token if refresh fails.
+        }
+      }
+      return res.json({
+        accessToken: authService.decrypt(req.user.tokens.google.accessToken),
+      });
+    } catch (err) {
+      console.error(err);
+      return res.status(500).json({ error: 'Failed to issue Google access token' });
+    }
   });
 
   router.get('/storages', requireAuth, async (req, res) => {
     try {
       const provider = req.query.provider;
+      if (provider === 'google') {
+        return res.status(400).json({
+          error:
+            'Google folders are selected via Google Picker; listStorages is GitHub-only',
+        });
+      }
       if (provider !== 'github') {
         return res.status(400).json({
-          error: 'Only provider=github is supported in Phase 1',
+          error: 'Only provider=github is supported for listStorages',
         });
       }
 

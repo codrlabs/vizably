@@ -37,17 +37,64 @@ test('GET /api/auth/status returns unauthenticated by default', async () => {
   assert.equal(res.body.user, null);
 });
 
-test('GET /api/auth/google returns 501 until Phase 3', async () => {
-  const app = createTestApp();
+test('GET /api/auth/google returns 503 when Google OAuth is not configured', async () => {
+  // Explicitly clear Google creds so a developer .env cannot register the strategy.
+  const authService = new AuthService({
+    sessionSecret: TEST_SESSION_SECRET,
+    encryptionKey: TEST_ENCRYPTION_KEY,
+    githubClientId: 'test-client-id',
+    githubClientSecret: 'test-client-secret',
+    githubCallbackUrl: 'http://localhost:3000/api/auth/github/callback',
+    googleClientId: '',
+    googleClientSecret: '',
+    googleCallbackUrl: '',
+  });
+  const app = createTestApp({ authService });
   const res = await request(app).get('/api/auth/google');
-  assert.equal(res.status, 501);
-  assert.match(res.body.error, /Phase 3/);
+  assert.equal(res.status, 503);
+  assert.match(res.body.error, /not configured/i);
 });
 
-test('GET /api/auth/google/callback returns 501 until Phase 3', async () => {
+test('GET /api/auth/google initiates OAuth redirect when configured', async () => {
+  const authService = new AuthService({
+    sessionSecret: TEST_SESSION_SECRET,
+    encryptionKey: TEST_ENCRYPTION_KEY,
+    githubClientId: 'test-client-id',
+    githubClientSecret: 'test-client-secret',
+    githubCallbackUrl: 'http://localhost:3000/api/auth/github/callback',
+    googleClientId: 'google-client-id.apps.googleusercontent.com',
+    googleClientSecret: 'google-client-secret',
+    googleCallbackUrl: 'http://localhost:3000/api/auth/google/callback',
+  });
+  const app = createTestApp({ authService });
+  const res = await request(app).get('/api/auth/google');
+  assert.equal(res.status, 302);
+  assert.match(res.headers.location, /accounts\.google\.com/);
+  assert.match(res.headers.location, /drive\.file/);
+});
+
+test('GET /api/auth/config returns Google Picker settings', async () => {
+  const authService = new AuthService({
+    sessionSecret: TEST_SESSION_SECRET,
+    encryptionKey: TEST_ENCRYPTION_KEY,
+    googleClientId: 'google-client-id.apps.googleusercontent.com',
+    googleClientSecret: 'google-client-secret',
+    googleCallbackUrl: 'http://localhost:3000/api/auth/google/callback',
+    googlePickerApiKey: 'picker-key-test',
+    googleCloudProjectNumber: '1234567890',
+  });
+  const app = createTestApp({ authService });
+  const res = await request(app).get('/api/auth/config');
+  assert.equal(res.status, 200);
+  assert.equal(res.body.googleClientId, 'google-client-id.apps.googleusercontent.com');
+  assert.equal(res.body.googlePickerApiKey, 'picker-key-test');
+  assert.equal(res.body.googleCloudProjectNumber, '1234567890');
+});
+
+test('GET /api/auth/google/token requires authentication', async () => {
   const app = createTestApp();
-  const res = await request(app).get('/api/auth/google/callback');
-  assert.equal(res.status, 501);
+  const res = await request(app).get('/api/auth/google/token');
+  assert.equal(res.status, 401);
 });
 
 test('GET /api/auth/storages requires authentication', async () => {

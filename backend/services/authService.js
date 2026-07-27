@@ -3,15 +3,23 @@
  * and authenticated provider clients for the storage service.
  *
  * No user DB: the session payload (identity + encrypted tokens + attached
- * `storage`) is the user. Google auth/Drive clients are stubbed until Phase 3.
+ * `storage`) is the user. Google uses `drive.file` only (Picker selects folders).
  */
 const crypto = require('crypto');
 const session = require('express-session');
 const passport = require('passport');
 const GitHubStrategy = require('passport-github2').Strategy;
+const GoogleStrategy = require('passport-google-oauth20').Strategy;
+const { google } = require('googleapis');
 const { Octokit } = require('@octokit/rest');
 
-const GOOGLE_NOT_AVAILABLE = 'Google auth is not available until Phase 3';
+/** Phase 0 choice: openid/email/profile + drive.file (Picker flow). */
+const GOOGLE_SCOPES = [
+  'openid',
+  'email',
+  'profile',
+  'https://www.googleapis.com/auth/drive.file',
+];
 
 class AuthService {
   /**
@@ -23,6 +31,11 @@ class AuthService {
    * @param {string} [deps.githubCallbackUrl]
    * @param {string} [deps.githubAppId] numeric GitHub App id (for installation tokens)
    * @param {string} [deps.githubAppPrivateKey] PEM private key for the GitHub App
+   * @param {string} [deps.googleClientId]
+   * @param {string} [deps.googleClientSecret]
+   * @param {string} [deps.googleCallbackUrl]
+   * @param {string} [deps.googlePickerApiKey] browser key for Google Picker (frontend)
+   * @param {string} [deps.googleCloudProjectNumber] Cloud project number for Picker setAppId
    */
   constructor(deps = {}) {
     this.sessionSecret = deps.sessionSecret ?? process.env.SESSION_SECRET;
@@ -41,6 +54,17 @@ class AuthService {
     this.githubAppPrivateKey = this._loadGitHubAppPrivateKey(
       deps.githubAppPrivateKey,
     );
+    this.googleClientId = deps.googleClientId ?? process.env.GOOGLE_CLIENT_ID;
+    this.googleClientSecret =
+      deps.googleClientSecret ?? process.env.GOOGLE_CLIENT_SECRET;
+    this.googleCallbackUrl =
+      deps.googleCallbackUrl ?? process.env.GOOGLE_REDIRECT_URI;
+    this.googlePickerApiKey =
+      deps.googlePickerApiKey ?? process.env.GOOGLE_PICKER_API_KEY ?? null;
+    this.googleCloudProjectNumber =
+      deps.googleCloudProjectNumber ??
+      process.env.GOOGLE_CLOUD_PROJECT_NUMBER ??
+      null;
 
     this._encryptionKey = this._parseEncryptionKey(this.encryptionKeyB64);
     this._passportConfigured = false;
@@ -287,7 +311,30 @@ class AuthService {
       );
     }
 
-    // Google strategy: Phase 3 — intentionally not registered here.
+    if (
+      this.googleClientId &&
+      this.googleClientSecret &&
+      this.googleCallbackUrl
+    ) {
+      passport.use(
+        'google',
+        new GoogleStrategy(
+          {
+            clientID: this.googleClientId,
+            clientSecret: this.googleClientSecret,
+            callbackURL: this.googleCallbackUrl,
+            scope: GOOGLE_SCOPES,
+          },
+          (accessToken, refreshToken, profile, done) => {
+            try {
+              done(null, this._buildGoogleUser(accessToken, refreshToken, profile));
+            } catch (err) {
+              done(err);
+            }
+          },
+        ),
+      );
+    }
 
     this._passportConfigured = true;
   }
@@ -317,6 +364,65 @@ class AuthService {
       },
       storage: null,
     };
+  }
+
+  /**
+   * @param {string} accessToken
+   * @param {string | undefined} refreshToken
+   * @param {import('passport-google-oauth20').Profile} profile
+   */
+  _buildGoogleUser(accessToken, refreshToken, profile) {
+    const primaryEmail =
+      profile.emails?.find((entry) => entry.verified)?.value ??
+      profile.emails?.[0]?.value ??
+      null;
+
+    /** @type {{ accessToken: string, refreshToken?: string }} */
+    const googleTokens = {
+      accessToken: this.encrypt(accessToken),
+    };
+    if (refreshToken) {
+      googleTokens.refreshToken = this.encrypt(refreshToken);
+    }
+
+    return {
+      id: String(profile.id),
+      provider: 'google',
+      username: primaryEmail || profile.displayName || String(profile.id),
+      displayName: profile.displayName || primaryEmail || String(profile.id),
+      email: primaryEmail,
+      avatarUrl: profile.photos?.[0]?.value ?? null,
+      tokens: {
+        google: googleTokens,
+      },
+      storage: null,
+    };
+  }
+
+  /** True when Google OAuth env/deps are complete and the Passport strategy is registered. */
+  isGoogleConfigured() {
+    return Boolean(
+      this.googleClientId && this.googleClientSecret && this.googleCallbackUrl,
+    );
+  }
+
+  /** @private */
+  _hasGoogleOAuthCredentials() {
+    return this.isGoogleConfigured();
+  }
+
+  /** @private */
+  _createGoogleOAuth2Client() {
+    if (!this._hasGoogleOAuthCredentials()) {
+      throw new Error(
+        'GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, and GOOGLE_REDIRECT_URI are required',
+      );
+    }
+    return new google.auth.OAuth2(
+      this.googleClientId,
+      this.googleClientSecret,
+      this.googleCallbackUrl,
+    );
   }
 
   /**
@@ -407,22 +513,63 @@ class AuthService {
   }
 
   /**
-   * Phase 3 stub — returns null until Google Drive adapter lands.
-   * @param {object} _user
-   * @returns {null}
+   * Authenticated Drive v3 client. Uses OAuth2.setCredentials (never GoogleAuth
+   * with a raw access_token object).
+   * @param {object} user session payload
+   * @returns {import('googleapis').drive_v3.Drive | null}
    */
-  getGoogleDriveClient(_user) {
-    return null;
+  getGoogleDriveClient(user) {
+    const encryptedAccess = user?.tokens?.google?.accessToken;
+    if (!encryptedAccess) {
+      return null;
+    }
+    if (!this.googleClientId || !this.googleClientSecret || !this.googleCallbackUrl) {
+      return null;
+    }
+
+    const oauth2 = this._createGoogleOAuth2Client();
+    /** @type {{ access_token: string, refresh_token?: string }} */
+    const credentials = {
+      access_token: this.decrypt(encryptedAccess),
+    };
+    if (user.tokens.google.refreshToken) {
+      credentials.refresh_token = this.decrypt(user.tokens.google.refreshToken);
+    }
+    oauth2.setCredentials(credentials);
+
+    return google.drive({ version: 'v3', auth: oauth2 });
   }
 
   /**
-   * Phase 3 stub.
-   * @param {object} _user
+   * Refresh an expired Google access token; updates `user.tokens.google` in place.
+   * @param {object} user session payload (mutated)
    */
-  async refreshGoogleToken(_user) {
-    const err = new Error(GOOGLE_NOT_AVAILABLE);
-    err.code = 'GOOGLE_NOT_AVAILABLE';
-    throw err;
+  async refreshGoogleToken(user) {
+    const encryptedRefresh = user?.tokens?.google?.refreshToken;
+    if (!encryptedRefresh) {
+      const err = new Error('Google refresh token is not available for this user');
+      err.code = 'GOOGLE_REFRESH_UNAVAILABLE';
+      throw err;
+    }
+
+    const oauth2 = this._createGoogleOAuth2Client();
+    oauth2.setCredentials({
+      refresh_token: this.decrypt(encryptedRefresh),
+    });
+
+    const { credentials } = await oauth2.refreshAccessToken();
+    if (!credentials.access_token) {
+      throw new Error('Google token refresh did not return an access token');
+    }
+
+    user.tokens = user.tokens || {};
+    user.tokens.google = user.tokens.google || {};
+    user.tokens.google.accessToken = this.encrypt(credentials.access_token);
+    if (credentials.refresh_token) {
+      user.tokens.google.refreshToken = this.encrypt(credentials.refresh_token);
+    }
+
+    return user;
   }
 
   /**
@@ -432,10 +579,10 @@ class AuthService {
    * @param {object} user session payload
    * @param {object} [options]
    * @param {object} [options.storageRef]
-   * @returns {Promise<{ githubClient?: import('@octokit/rest').Octokit, githubUserClient?: import('@octokit/rest').Octokit, driveClient?: null }>}
+   * @returns {Promise<{ githubClient?: import('@octokit/rest').Octokit, githubUserClient?: import('@octokit/rest').Octokit, driveClient?: import('googleapis').drive_v3.Drive }>}
    */
   async clientsFor(user, options = {}) {
-    /** @type {{ githubClient?: import('@octokit/rest').Octokit, githubUserClient?: import('@octokit/rest').Octokit, driveClient?: null }} */
+    /** @type {{ githubClient?: import('@octokit/rest').Octokit, githubUserClient?: import('@octokit/rest').Octokit, driveClient?: import('googleapis').drive_v3.Drive }} */
     const clients = {};
     const storageRef = options.storageRef;
     const fullName = storageRef?.full_name || storageRef?.repo;
@@ -469,6 +616,8 @@ class AuthService {
       clients.githubClient = clients.githubUserClient;
     }
 
+    // Drive client keeps refresh_token on the OAuth2 client so googleapis can
+    // refresh on 401; call refreshGoogleToken explicitly after auth errors.
     const driveClient = this.getGoogleDriveClient(user);
     if (driveClient) {
       clients.driveClient = driveClient;
@@ -483,6 +632,20 @@ class AuthService {
    */
   authenticateGitHub(options = {}) {
     return passport.authenticate('github', { session: true, ...options });
+  }
+
+  /**
+   * Google OAuth — request offline access so we store a refresh token.
+   * @param {object} [options]
+   */
+  authenticateGoogle(options = {}) {
+    return passport.authenticate('google', {
+      session: true,
+      accessType: 'offline',
+      prompt: 'consent',
+      scope: GOOGLE_SCOPES,
+      ...options,
+    });
   }
 
   /**
@@ -504,3 +667,4 @@ class AuthService {
 }
 
 module.exports = AuthService;
+module.exports.GOOGLE_SCOPES = GOOGLE_SCOPES;

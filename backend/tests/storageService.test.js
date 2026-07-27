@@ -254,6 +254,156 @@ function createMockGitHubClient(initial = {}) {
   };
 }
 
+/**
+ * Minimal Drive v3 mock: parentId → children with optional content/etag.
+ * @param {{ folderId: string, files?: Record<string, Array<object>> }} initial
+ */
+function createMockDriveClient(initial = {}) {
+  const rootId = initial.folderId || 'folder-1';
+  /** @type {Record<string, Array<object>>} */
+  const byParent = {
+    [rootId]: [...(initial.files?.[rootId] || [])],
+    ...(initial.files || {}),
+  };
+  /** @type {Record<string, object>} */
+  const byId = {
+    [rootId]: {
+      id: rootId,
+      name: initial.folderName || 'vizably-scans',
+      mimeType: 'application/vnd.google-apps.folder',
+      webViewLink: `https://drive.google.com/drive/folders/${rootId}`,
+      capabilities: {
+        canEdit: true,
+        canAddChildren: true,
+        canListChildren: true,
+        canDownload: true,
+      },
+    },
+  };
+
+  for (const children of Object.values(byParent)) {
+    for (const child of children) {
+      byId[child.id] = { ...child, parents: undefined };
+    }
+  }
+
+  let counter = 0;
+  const nextId = (prefix) => {
+    counter += 1;
+    return `${prefix}-${counter}`;
+  };
+
+  const list = (parentId) => byParent[parentId] || [];
+  const findByName = (parentId, name) =>
+    list(parentId).find((f) => f.name === name) || null;
+
+  const readStream = async (body) => {
+    if (typeof body === 'string') return body;
+    if (Buffer.isBuffer(body)) return body.toString('utf8');
+    if (body && typeof body[Symbol.asyncIterator] === 'function') {
+      let out = '';
+      for await (const chunk of body) {
+        out += chunk;
+      }
+      return out;
+    }
+    if (body && typeof body.read === 'function') {
+      const chunks = [];
+      for await (const chunk of body) {
+        chunks.push(chunk);
+      }
+      return Buffer.concat(chunks.map((c) => Buffer.from(c))).toString('utf8');
+    }
+    return String(body ?? '');
+  };
+
+  return {
+    list,
+    findByName,
+    files: {
+      get: async ({ fileId, alt, fields }, opts) => {
+        const file = byId[fileId];
+        if (!file) {
+          const err = new Error('Not Found');
+          err.code = 404;
+          err.status = 404;
+          throw err;
+        }
+        if (alt === 'media') {
+          return { data: file.content ?? '' };
+        }
+        // Drive v3: etag is HTTP-header only (fields=etag → 400).
+        if (!file.etag) {
+          file.etag = `"etag-${fileId}"`;
+        }
+        const data = { id: file.id, name: file.name, mimeType: file.mimeType };
+        if (fields?.includes('capabilities') && file.capabilities) {
+          data.capabilities = file.capabilities;
+        }
+        if (fields?.includes('webViewLink') && file.webViewLink) {
+          data.webViewLink = file.webViewLink;
+        }
+        return { data, headers: { etag: file.etag } };
+      },
+      list: async ({ q }) => {
+        const match = /'([^']+)' in parents/.exec(q || '');
+        const parentId = match?.[1];
+        return {
+          data: {
+            files: list(parentId).map(({ content: _c, ...meta }) => meta),
+          },
+        };
+      },
+      create: async ({ requestBody, media }) => {
+        const id = nextId('file');
+        const parentId = requestBody.parents?.[0] || rootId;
+        const content = media?.body ? await readStream(media.body) : '';
+        const entry = {
+          id,
+          name: requestBody.name,
+          mimeType: requestBody.mimeType || media?.mimeType || 'application/json',
+          content,
+          etag: `"etag-${id}"`,
+          webViewLink: `https://drive.google.com/file/d/${id}`,
+        };
+        byId[id] = entry;
+        if (!byParent[parentId]) byParent[parentId] = [];
+        byParent[parentId].push(entry);
+        if (entry.mimeType === 'application/vnd.google-apps.folder') {
+          byParent[id] = byParent[id] || [];
+        }
+        return {
+          data: { id: entry.id, name: entry.name },
+          headers: { etag: entry.etag },
+        };
+      },
+      update: async ({ fileId, media }, options) => {
+        const file = byId[fileId];
+        if (!file) {
+          const err = new Error('Not Found');
+          err.code = 404;
+          throw err;
+        }
+        const ifMatch = options?.headers?.['If-Match'];
+        if (ifMatch && file.etag && ifMatch !== file.etag) {
+          const err = new Error('Precondition Failed');
+          err.code = 412;
+          err.status = 412;
+          throw err;
+        }
+        if (media?.body) {
+          file.content = await readStream(media.body);
+        }
+        file.etag = `"etag-${fileId}-${Date.now()}"`;
+        return {
+          data: { id: file.id, name: file.name },
+          headers: { etag: file.etag },
+        };
+      },
+    },
+  };
+}
+
 test('listGitHubRepos maps node id and repo metadata', async () => {
   const storageService = new StorageService();
   const client = createMockGitHubClient();
@@ -391,11 +541,50 @@ test('validateStorage returns invalid for malformed manifest', async () => {
   assert.equal(result.reason, 'malformed_manifest');
 });
 
-test('validateStorage stubs google provider until Phase 3', async () => {
+test('validateStorage returns initializable for empty Drive folder', async () => {
   const storageService = new StorageService();
-  const result = await storageService.validateStorage('google', { id: 'folder' }, {});
-  assert.equal(result.status, 'invalid');
-  assert.equal(result.reason, 'provider_not_available');
+  const drive = createMockDriveClient({ folderId: 'folder-1' });
+  const result = await storageService.validateStorage(
+    'google',
+    { id: 'folder-1', name: 'vizably-scans' },
+    { driveClient: drive },
+  );
+  assert.equal(result.status, 'initializable');
+  assert.equal(result.capabilities.canWrite, true);
+});
+
+test('validateStorage returns loadable for Drive folder with vizably.json', async () => {
+  const storageService = new StorageService();
+  const drive = createMockDriveClient({
+    folderId: 'folder-1',
+    files: {
+      'folder-1': [
+        {
+          id: 'manifest-1',
+          name: 'vizably.json',
+          mimeType: 'application/json',
+          content: JSON.stringify(manifest({
+            storage: {
+              provider: 'google',
+              providerStorageId: 'folder-1',
+              ownerId: '42',
+              ownerDisplay: 'sam',
+              folderName: 'vizably-scans',
+            },
+          })),
+          etag: '"etag-manifest"',
+        },
+      ],
+    },
+  });
+
+  const result = await storageService.validateStorage(
+    'google',
+    { id: 'folder-1' },
+    { driveClient: drive },
+  );
+  assert.equal(result.status, 'loadable');
+  assert.equal(result.manifestSummary.accountId, manifest().account.id);
 });
 
 test('initStorage writes manifest and index skeleton', async () => {
@@ -566,17 +755,40 @@ test('saveScanResults writes scan file, index, and manifest in one commit', asyn
   assert.equal(updatedManifest.summary.scanCount, 1);
 });
 
-test('saveScanResults rejects google storage until Phase 3', async () => {
+test('initStorage + saveScanResults write Drive store with ETag updates', async () => {
   const storageService = new StorageService();
-  await assert.rejects(
-    () =>
-      storageService.saveScanResults(
-        { storage: { provider: 'google' } },
-        { problems: {}, whatsGood: [] },
-        'https://example.com',
-        {},
-      ),
-    /not available until Phase 3/,
+  const drive = createMockDriveClient({ folderId: 'folder-1' });
+
+  const inited = await storageService.initStorage(
+    'google',
+    { id: 'folder-1', name: 'vizably-scans' },
+    { id: '42', username: 'sam' },
+    { driveClient: drive },
+  );
+
+  assert.equal(inited.provider, 'google');
+  assert.equal(inited.storageRef.id, 'folder-1');
+  assert.ok(drive.findByName('folder-1', 'vizably.json'));
+
+  const saved = await storageService.saveScanResults(
+    {
+      storage: { provider: 'google', id: 'folder-1' },
+    },
+    {
+      problems: { visualAccessibility: [], structureAndSemantics: [], multimedia: [] },
+      whatsGood: [],
+    },
+    'https://codrlabs.com',
+    { driveClient: drive },
+  );
+
+  assert.ok(saved.scanId);
+  assert.equal(saved.scanCount, 1);
+  const scansFolder = drive.findByName('folder-1', 'scans');
+  assert.ok(scansFolder);
+  assert.ok(
+    drive.list('folder-1').some((f) => f.name === 'scans') ||
+      drive.list(scansFolder.id).some((f) => f.name.endsWith('_codrlabs.com.json')),
   );
 });
 

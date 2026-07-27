@@ -188,18 +188,18 @@ One adapter behind the existing provider-neutral interface; no rewrite of Phases
 
 ### Backend
 
-- [ ] `npm install passport-google-oauth20 googleapis` (+ dev types)
-- [ ] Add Google OAuth vars + `GOOGLE_PICKER_API_KEY` to `.env.example` and `backend/README.md`
-- [ ] Passport Google strategy; wire `GET /google` + `GET /google/callback`
-- [ ] `getGoogleDriveClient(user)` + `refreshGoogleToken(user)` — real implementations
-- [ ] Drive adapter in `storageService`: fit-check, load, init, save with generation/ETag
-- [ ] Backend scopes: `drive.file` only (per Phase 0 choice)
+- [x] `npm install passport-google-oauth20 googleapis` (+ dev types)
+- [x] Add Google OAuth vars + `GOOGLE_PICKER_API_KEY` to `.env.example` and `backend/README.md`
+- [x] Passport Google strategy; wire `GET /google` + `GET /google/callback`
+- [x] `getGoogleDriveClient(user)` + `refreshGoogleToken(user)` — real implementations
+- [x] Drive adapter in `storageService`: fit-check, load, init, save with generation/ETag
+- [x] Backend scopes: `drive.file` only (per Phase 0 choice)
 
 ### Frontend
 
-- [ ] `googleLogin()` → full redirect to `/api/auth/google`
-- [ ] ConnectView: launch **Google Picker** for folder selection
-- [ ] Enable Google connect path in `App.jsx` / landing
+- [x] `googleLogin()` → full redirect to `/api/auth/google`
+- [x] ConnectView: launch **Google Picker** for folder selection
+- [x] Enable Google connect path in `App.jsx` / landing
 
 ---
 
@@ -224,15 +224,15 @@ One adapter behind the existing provider-neutral interface; no rewrite of Phases
 
 ## Verification checklist (run before marking complete)
 
-- [ ] `grep -r "makeAuthRouter" backend/routes/` — factory used, mounted once
-- [ ] `grep -r "mountAuthRoutes" backend/` — **zero** (no dual mount)
-- [ ] `grep -r "credentials: 'include'" frontend/src/lib/apiClient.js` — present
-- [ ] `grep -rn "validateStorage\|listStorages\|setupStorage" frontend/src/lib/apiClient.js` — all present
-- [ ] `grep -r "getForAuthenticatedUser" backend/` — **zero** (use `repos.get`/`getContent`)
-- [ ] `grep -r "credentials.*access_token" backend/` — **zero** (use `setCredentials`)
-- [ ] `grep -r "PROVIDERS" backend/routes/auth.js` — **zero** (no frontend import)
-- [ ] `grep -rn "drive.file\|drive.metadata.readonly" backend/` — scope matches the locked decision
-- [ ] `grep -rn "sha" backend/services/storageService.js` — GitHub writes pass a blob sha
+- [x] `grep -r "makeAuthRouter" backend/routes/` — factory used, mounted once
+- [x] `grep -r "mountAuthRoutes" backend/` — **zero** (no dual mount)
+- [x] `grep -r "credentials: 'include'" frontend/src/lib/apiClient.js` — present
+- [x] `grep -rn "validateStorage\|listStorages\|setupStorage" frontend/src/lib/apiClient.js` — all present
+- [x] `grep -r "getForAuthenticatedUser" backend/` — **zero** (use `repos.get`/`getContent`)
+- [x] `grep -r "credentials.*access_token" backend/` — **zero** (use `setCredentials`)
+- [x] `grep -r "PROVIDERS" backend/routes/auth.js` — **zero** (no frontend import)
+- [x] `grep -rn "drive.file\|drive.metadata.readonly" backend/` — scope matches the locked decision
+- [x] `grep -rn "sha" backend/services/storageService.js` — GitHub writes pass a blob sha
 - [ ] No tokens written to the store: review `initStorage` / `saveScanResults` payloads
 
 ---
