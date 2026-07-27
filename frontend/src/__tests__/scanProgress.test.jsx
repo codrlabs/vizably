@@ -76,8 +76,20 @@ describe('ScanProgressIndicator', () => {
   it('shows the target URL and the first progress stage', () => {
     render(<ScanProgressIndicator url="example.com" />)
 
-    expect(screen.getByRole('status')).toHaveTextContent(/Scanning example.com/)
+    const status = screen.getByRole('status')
+    expect(status).toHaveTextContent(/Scanning example.com, this can take up to a minute/)
     expect(screen.getByText(SCAN_PROGRESS_STAGES[0])).toBeInTheDocument()
+    expect(screen.getByText(SCAN_PROGRESS_STAGES[0])).toHaveAttribute('aria-hidden', 'true')
+  })
+
+  it('keeps rotating stages out of the live status announcement', () => {
+    render(<ScanProgressIndicator url="example.com" />)
+
+    const status = screen.getByRole('status')
+    const stage = screen.getByText(SCAN_PROGRESS_STAGES[0])
+    expect(stage).toHaveAttribute('aria-hidden', 'true')
+    // Status region still includes the fixed copy (visually hidden for AT).
+    expect(status.textContent).toMatch(/this can take up to a minute/)
   })
 
   it('advances the visible stage while mounted', () => {
@@ -88,5 +100,6 @@ describe('ScanProgressIndicator', () => {
     })
 
     expect(screen.getByText(SCAN_PROGRESS_STAGES[1])).toBeInTheDocument()
+    expect(screen.getByText(SCAN_PROGRESS_STAGES[1])).toHaveAttribute('aria-hidden', 'true')
   })
 })

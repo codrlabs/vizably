@@ -2,6 +2,8 @@ import { useScanProgress } from '../hooks/useScanProgress'
 
 /**
  * Spinner + staged scan progress messages (issue #75).
+ * Rotating stage copy is visual-only (`aria-hidden`) so screen readers hear
+ * one stable status line instead of every stage change.
  *
  * @param {object} props
  * @param {string} [props.url] site being scanned (shown above the stage line)
@@ -10,6 +12,9 @@ import { useScanProgress } from '../hooks/useScanProgress'
 export default function ScanProgressIndicator({ url, fill = false }) {
   const stage = useScanProgress(true)
   const label = url ? `Scanning ${url}` : 'Scanning'
+  const statusText = url
+    ? `Scanning ${url}, this can take up to a minute.`
+    : 'Scanning, this can take up to a minute.'
 
   return (
     <div
@@ -29,6 +34,7 @@ export default function ScanProgressIndicator({ url, fill = false }) {
     >
       <div
         className="ev-spin"
+        aria-hidden="true"
         style={{
           width: 34,
           height: 34,
@@ -38,10 +44,30 @@ export default function ScanProgressIndicator({ url, fill = false }) {
           marginBottom: 8,
         }}
       />
-      <div style={{ font: 'var(--font-label)', color: 'var(--text-strong)' }}>
+      {/* Fixed announcement for assistive tech; visual headline stays below. */}
+      <span
+        style={{
+          position: 'absolute',
+          width: 1,
+          height: 1,
+          padding: 0,
+          margin: -1,
+          overflow: 'hidden',
+          clip: 'rect(0, 0, 0, 0)',
+          whiteSpace: 'nowrap',
+          border: 0,
+        }}
+      >
+        {statusText}
+      </span>
+      <div
+        aria-hidden="true"
+        style={{ font: 'var(--font-label)', color: 'var(--text-strong)' }}
+      >
         {label}…
       </div>
       <div
+        aria-hidden="true"
         style={{
           font: 'var(--font-body)',
           fontSize: 'var(--text-sm)',
