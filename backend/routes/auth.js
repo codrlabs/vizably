@@ -4,7 +4,7 @@
  * Mounted at `/api/auth` by `routes/index.js`. Session + passport middleware
  * are applied in `mountRoutes` so `/api/scan` can read `req.user` too.
  */
-const { Router } = require('express')
+const { Router } = require('express');
 
 /**
  * @param {object} deps
