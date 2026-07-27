@@ -230,3 +230,126 @@ test('getSavedScan requires auth and attached storage', async () => {
 
   assert.equal(statusCode, 401);
 });
+
+function mockRes() {
+  let statusCode = 200;
+  let body;
+  const res = {
+    status(code) {
+      statusCode = code;
+      return this;
+    },
+    json(payload) {
+      body = payload;
+    },
+  };
+  return {
+    res,
+    get statusCode() {
+      return statusCode;
+    },
+    get body() {
+      return body;
+    },
+  };
+}
+
+test('postScan returns 500 when the runner throws', async () => {
+  const ScanController = require('../controllers/scanController');
+  const ctrl = new ScanController({
+    mockScanResults,
+    scanRunner: {
+      run: async () => {
+        throw new Error('browser crashed');
+      },
+    },
+  });
+  const out = mockRes();
+  await ctrl.postScan({ body: { url: 'https://example.com' } }, out.res);
+  assert.equal(out.statusCode, 500);
+  assert.equal(out.body.error, 'Internal server error');
+});
+
+test('getScanResults returns 404 when runner yields null', async () => {
+  const ScanController = require('../controllers/scanController');
+  const ctrl = new ScanController({
+    mockScanResults,
+    scanRunner: {
+      getResults: async () => null,
+    },
+  });
+  const out = mockRes();
+  await ctrl.getScanResults({ query: { url: 'https://example.com' } }, out.res);
+  assert.equal(out.statusCode, 404);
+  assert.match(out.body.error, /No scan results/);
+});
+
+test('getSavedScan returns 404 for SCAN_NOT_FOUND', async () => {
+  const ScanController = require('../controllers/scanController');
+  const ctrl = new ScanController({
+    mockScanResults,
+    scanRunner: mockScanRunner,
+    authService: { clientsFor: async () => ({}) },
+    storageService: {
+      getScanById: async () => {
+        const err = new Error('missing');
+        err.code = 'SCAN_NOT_FOUND';
+        throw err;
+      },
+    },
+  });
+  const out = mockRes();
+  await ctrl.getSavedScan(
+    {
+      params: { id: 'missing' },
+      isAuthenticated: () => true,
+      user: { storage: { id: 'R_kg' } },
+    },
+    out.res,
+  );
+  assert.equal(out.statusCode, 404);
+});
+
+test('getSavedScan returns 403 for STORAGE_ACCESS_DENIED', async () => {
+  const ScanController = require('../controllers/scanController');
+  const ctrl = new ScanController({
+    mockScanResults,
+    scanRunner: mockScanRunner,
+    authService: { clientsFor: async () => ({}) },
+    storageService: {
+      getScanById: async () => {
+        const err = new Error('denied');
+        err.code = 'STORAGE_ACCESS_DENIED';
+        throw err;
+      },
+    },
+  });
+  const out = mockRes();
+  await ctrl.getSavedScan(
+    {
+      params: { id: 'scan-1' },
+      isAuthenticated: () => true,
+      user: { storage: { id: 'R_kg' } },
+    },
+    out.res,
+  );
+  assert.equal(out.statusCode, 403);
+});
+
+test('getSavedScan returns 503 when storage services are missing', async () => {
+  const ScanController = require('../controllers/scanController');
+  const ctrl = new ScanController({
+    mockScanResults,
+    scanRunner: mockScanRunner,
+  });
+  const out = mockRes();
+  await ctrl.getSavedScan(
+    {
+      params: { id: 'scan-1' },
+      isAuthenticated: () => true,
+      user: { storage: { id: 'R_kg' } },
+    },
+    out.res,
+  );
+  assert.equal(out.statusCode, 503);
+});

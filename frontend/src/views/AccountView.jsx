@@ -90,7 +90,7 @@ export default function AccountView({ onSignOut, user, shellUser, provider }) {
             </RowItem>
             <div style={{ borderTop: '1px solid var(--border-subtle)' }} />
             <RowItem icon="Timer" title="Auto-delete old scans" sub={`Automatically remove scans older than 90 days from ${pv.storeShort}.`}>
-              <Switch on={autoDelete} onToggle={() => setAutoDelete(!autoDelete)} />
+              <Switch on={autoDelete} onToggle={() => setAutoDelete((v) => !v)} />
             </RowItem>
             <div style={{ borderTop: '1px solid var(--border-subtle)' }} />
             <RowItem icon="Download" title="Download my data" sub="Export your account and saved reports as JSON.">

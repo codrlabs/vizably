@@ -327,7 +327,7 @@ Goal: the scanner doesn't fall over on real-world sites.
       class.
 - [ ] Friendly error responses for DNS failure, navigation timeout,
       non-2xx status.
-- [ ] CI runs backend + frontend tests on every PR.
+- [x] CI runs backend + frontend tests on every PR.
 
 **Done when:** scanning the top 20 sites from a chosen list either
 returns results or returns a categorized error — never a 500.
