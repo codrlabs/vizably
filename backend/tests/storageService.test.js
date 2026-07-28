@@ -251,6 +251,7 @@ function createMockGitHubClient(initial = {}) {
                 installations: installationProbe.map((entry) => ({
                   id: entry.id,
                   permissions: { contents: entry.contents },
+                  repository_selection: entry.repository_selection || 'selected',
                 })),
               },
             }),
@@ -300,7 +301,6 @@ test('createGitHubRepository creates a private empty repo and returns storageRef
 test('createGitHubRepository sets needsInstall when App cannot write yet', async () => {
   const storageService = new StorageService();
   const client = createMockGitHubClient({
-    repoMeta: { permissions: { pull: true, push: false, admin: false } },
     installationProbe: [
       {
         id: 1,
@@ -319,6 +319,24 @@ test('createGitHubRepository sets needsInstall when App cannot write yet', async
     result.installUrl,
     'https://github.com/apps/vizably/installations/new',
   );
+});
+
+test('createGitHubRepository skips install hop when installation covers all repos', async () => {
+  const storageService = new StorageService();
+  const client = createMockGitHubClient({
+    installationProbe: [
+      {
+        id: 1,
+        contents: 'write',
+        repository_selection: 'all',
+        repos: [],
+      },
+    ],
+  });
+  const result = await storageService.createGitHubRepository('vizably-new', {
+    githubUserClient: client,
+  });
+  assert.equal(result.needsInstall, false);
 });
 
 test('createGitHubRepository rejects invalid names', async () => {

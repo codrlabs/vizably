@@ -97,13 +97,52 @@ class StorageService {
     };
 
     const [owner, repo] = created.full_name.split('/');
-    const capabilities = await this._probeGitHubCapabilities(octokit, owner, repo);
-    const needsInstall = !capabilities.canWrite;
+    const onInstallation = await this._isRepoOnWritableInstallation(octokit, owner, repo);
+    const needsInstall = !onInstallation;
     const installUrl = needsInstall
       ? options.installUrl || 'https://github.com/settings/installations'
       : null;
 
     return { storageRef, needsInstall, installUrl };
+  }
+
+  /**
+   * True when a Vizably App installation with Contents write includes this repo.
+   * Does not fall back to the user's personal push bit — create needs the App.
+   * @param {import('@octokit/rest').Octokit} octokit user access token client
+   * @param {string} owner
+   * @param {string} repo
+   * @private
+   */
+  async _isRepoOnWritableInstallation(octokit, owner, repo) {
+    const fullName = `${owner}/${repo}`;
+    try {
+      const { data } = await octokit.rest.apps.listInstallationsForAuthenticatedUser({
+        per_page: 100,
+      });
+
+      for (const installation of data.installations ?? []) {
+        if (installation.permissions?.contents !== 'write') {
+          continue;
+        }
+        if (installation.repository_selection === 'all') {
+          return true;
+        }
+
+        const { data: reposData } =
+          await octokit.rest.apps.listInstallationReposForAuthenticatedUser({
+            installation_id: installation.id,
+            per_page: 100,
+          });
+
+        if (reposData.repositories?.some((r) => r.full_name === fullName)) {
+          return true;
+        }
+      }
+    } catch {
+      return false;
+    }
+    return false;
   }
 
   /**
