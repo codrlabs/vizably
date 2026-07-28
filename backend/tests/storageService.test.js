@@ -82,6 +82,20 @@ function createMockGitHubClient(initial = {}) {
           ],
         }),
         get: async () => ({ data: repoMeta }),
+        createForAuthenticatedUser: async ({ name, private: isPrivate, auto_init }) => {
+          if (initial.createRepoError) {
+            throw initial.createRepoError;
+          }
+          const created = initial.createdRepo ?? {
+            node_id: 'R_kgNew',
+            name,
+            full_name: `sam/${name}`,
+            private: isPrivate !== false,
+            html_url: `https://github.com/sam/${name}`,
+            auto_init,
+          };
+          return { data: created };
+        },
         createOrUpdateFileContents: async ({ path, content, sha }) => {
           if (createOrUpdateFailures > 0) {
             createOrUpdateFailures -= 1;
@@ -261,6 +275,80 @@ test('listGitHubRepos maps node id and repo metadata', async () => {
   assert.equal(repos.length, 1);
   assert.equal(repos[0].id, STORAGE_REF.id);
   assert.equal(repos[0].full_name, STORAGE_REF.full_name);
+});
+
+test('createGitHubRepository creates a private empty repo and returns storageRef', async () => {
+  const storageService = new StorageService();
+  const client = createMockGitHubClient({
+    installationProbe: [
+      {
+        id: 1,
+        contents: 'write',
+        repos: ['sam/vizably-new'],
+      },
+    ],
+  });
+  const result = await storageService.createGitHubRepository('vizably-new', {
+    githubUserClient: client,
+  });
+  assert.equal(result.storageRef.full_name, 'sam/vizably-new');
+  assert.equal(result.storageRef.id, 'R_kgNew');
+  assert.equal(result.needsInstall, false);
+  assert.equal(result.installUrl, null);
+});
+
+test('createGitHubRepository sets needsInstall when App cannot write yet', async () => {
+  const storageService = new StorageService();
+  const client = createMockGitHubClient({
+    repoMeta: { permissions: { pull: true, push: false, admin: false } },
+    installationProbe: [
+      {
+        id: 1,
+        contents: 'write',
+        repos: ['sam/other-repo'],
+      },
+    ],
+  });
+  const result = await storageService.createGitHubRepository(
+    'vizably-new',
+    { githubUserClient: client },
+    { installUrl: 'https://github.com/apps/vizably/installations/new' },
+  );
+  assert.equal(result.needsInstall, true);
+  assert.equal(
+    result.installUrl,
+    'https://github.com/apps/vizably/installations/new',
+  );
+});
+
+test('createGitHubRepository rejects invalid names', async () => {
+  const storageService = new StorageService();
+  const client = createMockGitHubClient();
+  await assert.rejects(
+    () => storageService.createGitHubRepository('sam/vizably-new', { githubUserClient: client }),
+    /name only/,
+  );
+  await assert.rejects(
+    () => storageService.createGitHubRepository('bad name!', { githubUserClient: client }),
+    /letters, numbers/,
+  );
+});
+
+test('createGitHubRepository maps name-taken conflicts', async () => {
+  const storageService = new StorageService();
+  const conflict = new Error('Repository creation failed.');
+  conflict.status = 422;
+  conflict.response = {
+    data: {
+      message: 'Repository creation failed.',
+      errors: [{ message: 'name already exists on this account' }],
+    },
+  };
+  const client = createMockGitHubClient({ createRepoError: conflict });
+  await assert.rejects(
+    () => storageService.createGitHubRepository('taken', { githubUserClient: client }),
+    /already exists/,
+  );
 });
 
 test('validateStorage returns initializable for empty repo', async () => {

@@ -104,8 +104,12 @@ export default function ConnectView({
   const [newRepoName, setNewRepoName] = useState(pv.dest)
   const [storages, setStorages] = useState([])
   const [selectedId, setSelectedId] = useState('')
+  const [createdStorageRef, setCreatedStorageRef] = useState(null)
+  const [needsInstall, setNeedsInstall] = useState(false)
+  const [installUrl, setInstallUrl] = useState(null)
   const [validation, setValidation] = useState(null)
   const [loadingRepos, setLoadingRepos] = useState(false)
+  const [creating, setCreating] = useState(false)
   const [validating, setValidating] = useState(false)
   const [confirming, setConfirming] = useState(false)
   const [error, setError] = useState(storageError)
@@ -121,9 +125,16 @@ export default function ConnectView({
     if (mode === 'existing') {
       return selectedRepo ? storageRefFromRepo(selectedRepo) : null
     }
+    if (createdStorageRef) {
+      return {
+        id: createdStorageRef.id,
+        full_name: createdStorageRef.full_name,
+        html_url: createdStorageRef.html_url,
+      }
+    }
     const match = findRepoByName(storages, newRepoName)
     return match ? storageRefFromRepo(match) : null
-  }, [isGitHub, mode, selectedRepo, storages, newRepoName])
+  }, [isGitHub, mode, selectedRepo, storages, newRepoName, createdStorageRef])
 
   const loadStorages = useCallback(async () => {
     if (!isGitHub) return
@@ -134,10 +145,12 @@ export default function ConnectView({
       const list = result.storages ?? []
       setStorages(list)
       setSelectedId((prev) => prev || list[0]?.id || '')
+      return list
     } catch (err) {
       setListError(err.message || 'Failed to load repositories')
       setStorages([])
       setSelectedId('')
+      return []
     } finally {
       setLoadingRepos(false)
     }
@@ -161,6 +174,9 @@ export default function ConnectView({
     try {
       const result = await client.validateStorage('github', storageRef)
       setValidation(result)
+      if (result?.capabilities?.canWrite) {
+        setNeedsInstall(false)
+      }
     } catch (err) {
       setValidation(null)
       setError(err.message || 'Failed to validate storage')
@@ -174,38 +190,118 @@ export default function ConnectView({
       setValidation(null)
       return
     }
+    if (needsInstall && mode === 'new') {
+      setValidation(null)
+      return
+    }
     runValidation(activeStorageRef)
-  }, [isGitHub, activeStorageRef, runValidation])
+  }, [isGitHub, activeStorageRef, runValidation, needsInstall, mode])
 
   const statusUi = validation ? STATUS_UI[validation.status] : null
   const proposedAction = statusUi?.action ?? null
   const canWrite = validation?.capabilities?.canWrite !== false
   const initBlocked = proposedAction === 'init' && validation && !canWrite
+  const awaitingCreate =
+    mode === 'new' && !activeStorageRef && Boolean(newRepoName.trim())
   const confirmBlocked =
     !validation ||
     !proposedAction ||
     validation.status === 'incompatible' ||
     validation.status === 'invalid' ||
     initBlocked ||
+    (mode === 'new' && needsInstall) ||
     (mode === 'new' && !activeStorageRef)
 
   const confirmLabel = useMemo(() => {
-    if (mode === 'new' && !activeStorageRef) {
-      return 'Create repo on GitHub first'
-    }
+    if (awaitingCreate) return 'Create repository'
     if (statusUi?.button) return statusUi.button
     return 'Continue'
-  }, [mode, activeStorageRef, statusUi])
+  }, [awaitingCreate, statusUi])
 
-  const handleConfirm = async () => {
-    if (confirmBlocked || !activeStorageRef || !proposedAction) return
+  const primaryDisabled =
+    creating ||
+    confirming ||
+    validating ||
+    (mode === 'new' && needsInstall) ||
+    (awaitingCreate ? !newRepoName.trim() : confirmBlocked)
 
-    if (mode === 'new' && !activeStorageRef) {
+  const handleCreateRepo = async () => {
+    const name = newRepoName.trim()
+    if (!name || creating) return
+
+    setCreating(true)
+    setError(null)
+    setNeedsInstall(false)
+    setInstallUrl(null)
+    try {
+      const result = await client.createStorage(name)
+      const ref = result.storageRef
+      const asListItem = {
+        id: ref.id,
+        name: ref.name || ref.full_name?.split('/')[1],
+        full_name: ref.full_name,
+        private: ref.private ?? true,
+        html_url: ref.html_url,
+      }
+      setCreatedStorageRef(asListItem)
+      setStorages((prev) => {
+        if (prev.some((r) => r.id === asListItem.id)) return prev
+        return [asListItem, ...prev]
+      })
+      setSelectedId(asListItem.id)
+
+      if (result.needsInstall) {
+        setNeedsInstall(true)
+        setInstallUrl(result.installUrl)
+        setValidation(null)
+      } else {
+        setNeedsInstall(false)
+        setInstallUrl(null)
+        await runValidation({
+          id: asListItem.id,
+          full_name: asListItem.full_name,
+          html_url: asListItem.html_url,
+        })
+      }
+    } catch (err) {
+      setError(err.message || 'Failed to create repository')
+    } finally {
+      setCreating(false)
+    }
+  }
+
+  const handleRefreshAfterInstall = async () => {
+    setError(null)
+    const list = await loadStorages()
+    const match =
+      (createdStorageRef && list.find((r) => r.id === createdStorageRef.id)) ||
+      findRepoByName(list, newRepoName) ||
+      createdStorageRef
+    if (!match) {
       setError(
-        `Create "${newRepoName.trim()}" on GitHub, install the Vizably app on it, then refresh the list.`,
+        'Repository not found yet. Add it to the Vizably GitHub App installation, then refresh again.',
       )
       return
     }
+    const ref = storageRefFromRepo(match)
+    setCreatedStorageRef({
+      id: match.id,
+      name: match.name,
+      full_name: match.full_name,
+      private: match.private,
+      html_url: match.html_url,
+    })
+    setNeedsInstall(false)
+    await runValidation(ref)
+  }
+
+  const handleConfirm = async () => {
+    if (mode === 'new' && !activeStorageRef && newRepoName.trim()) {
+      await handleCreateRepo()
+      return
+    }
+
+    if (confirmBlocked || !activeStorageRef || !proposedAction) return
 
     setConfirming(true)
     setError(null)
@@ -383,7 +479,7 @@ export default function ConnectView({
               id="new"
               icon="Plus"
               title={`Create a new ${pv.unit}`}
-              desc={`Initialize a fresh private ${pv.unitShort} for Vizably (must exist on GitHub first).`}
+              desc={`Create a fresh private ${pv.unitShort} under your GitHub account and set it up for Vizably.`}
             >
               <label
                 style={{
@@ -412,7 +508,13 @@ export default function ConnectView({
                 <input
                   value={newRepoName}
                   onClick={(e) => e.stopPropagation()}
-                  onChange={(e) => setNewRepoName(e.target.value)}
+                  onChange={(e) => {
+                    setNewRepoName(e.target.value)
+                    setCreatedStorageRef(null)
+                    setNeedsInstall(false)
+                    setInstallUrl(null)
+                  }}
+                  disabled={creating}
                   style={{
                     flex: 1,
                     border: 'none',
@@ -424,29 +526,73 @@ export default function ConnectView({
                   }}
                 />
               </div>
-              {mode === 'new' && !activeStorageRef && newRepoName.trim() && (
-                <p style={{ fontSize: 'var(--text-xs)', color: 'var(--text-muted)', margin: '8px 0 0' }}>
-                  Create this repository on GitHub, install the Vizably app on it, then{' '}
-                  <button
-                    type="button"
-                    onClick={(e) => {
-                      e.stopPropagation()
-                      loadStorages()
-                    }}
-                    style={{
-                      background: 'none',
-                      border: 'none',
-                      padding: 0,
-                      color: 'var(--text-link)',
-                      cursor: 'pointer',
-                      font: 'inherit',
-                      textDecoration: 'underline',
-                    }}
-                  >
-                    refresh the list
-                  </button>
-                  .
-                </p>
+              <p
+                style={{
+                  fontSize: 'var(--text-xs)',
+                  color: 'var(--text-muted)',
+                  margin: '8px 0 0',
+                  lineHeight: 1.45,
+                }}
+              >
+                Creating a repository requires Vizably&apos;s GitHub App{' '}
+                <strong style={{ fontWeight: 600, color: 'var(--text-body)' }}>
+                  Administration
+                </strong>{' '}
+                permission (create empty private repos). Contents stay limited to repos you
+                install Vizably on.
+              </p>
+              {needsInstall && (
+                <div
+                  style={{
+                    marginTop: 10,
+                    padding: '10px 12px',
+                    borderRadius: 'var(--radius-md)',
+                    background: 'var(--sev-moderate-bg)',
+                    border: '1px solid var(--sev-moderate)',
+                    fontSize: 'var(--text-sm)',
+                    color: 'var(--text-body)',
+                    lineHeight: 1.45,
+                  }}
+                  onClick={(e) => e.stopPropagation()}
+                >
+                  <p style={{ margin: 0 }}>
+                    Repository created
+                    {createdStorageRef?.full_name ? (
+                      <>
+                        {' '}
+                        (<code style={{ font: 'var(--font-code)' }}>{createdStorageRef.full_name}</code>)
+                      </>
+                    ) : null}
+                    . Add it to your Vizably GitHub App installation, then continue.
+                  </p>
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10, marginTop: 10 }}>
+                    {installUrl && (
+                      <a
+                        href={installUrl}
+                        target="_blank"
+                        rel="noreferrer"
+                        style={{ color: 'var(--text-link)' }}
+                      >
+                        Open GitHub App install
+                      </a>
+                    )}
+                    <button
+                      type="button"
+                      onClick={handleRefreshAfterInstall}
+                      style={{
+                        background: 'none',
+                        border: 'none',
+                        padding: 0,
+                        color: 'var(--text-link)',
+                        cursor: 'pointer',
+                        font: 'inherit',
+                        textDecoration: 'underline',
+                      }}
+                    >
+                      I&apos;ve added it — refresh
+                    </button>
+                  </div>
+                </div>
               )}
             </Option>
 
@@ -606,11 +752,11 @@ export default function ConnectView({
             variant="primary"
             size="lg"
             style={{ flex: 1 }}
-            disabled={confirmBlocked || confirming || validating}
+            disabled={primaryDisabled}
             onClick={handleConfirm}
             iconRight={Ico('ArrowRight', 17, '#fff')}
           >
-            {confirming ? 'Connecting…' : confirmLabel}
+            {creating ? 'Creating…' : confirming ? 'Connecting…' : confirmLabel}
           </Button>
         </div>
       </div>

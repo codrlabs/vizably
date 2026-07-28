@@ -169,6 +169,51 @@ test('GET /api/auth/storages returns mapped GitHub repos', async () => {
   assert.equal(res.body.storages[0].id, 'R_kg');
 });
 
+test('POST /api/auth/storage/create returns storageRef and needsInstall', async () => {
+  const app = createAuthedApp({
+    user: AUTHED_USER,
+    authService: {
+      clientsFor: async () => ({ githubUserClient: { mock: true } }),
+      getInstallationSetupUrl: async () =>
+        'https://github.com/apps/vizably/installations/new',
+    },
+    storageService: {
+      createGitHubRepository: async (name, _clients, options) => ({
+        storageRef: {
+          id: 'R_kgNew',
+          name,
+          full_name: `sam/${name}`,
+          private: true,
+          html_url: `https://github.com/sam/${name}`,
+        },
+        needsInstall: true,
+        installUrl: options.installUrl,
+      }),
+    },
+  });
+  const res = await request(app)
+    .post('/api/auth/storage/create')
+    .send({ name: 'vizably-new' });
+  assert.equal(res.status, 201);
+  assert.equal(res.body.storageRef.full_name, 'sam/vizably-new');
+  assert.equal(res.body.needsInstall, true);
+  assert.match(res.body.installUrl, /installations\/new/);
+});
+
+test('POST /api/auth/storage/create requires name', async () => {
+  const app = createAuthedApp({
+    user: AUTHED_USER,
+    authService: {
+      clientsFor: async () => ({ githubUserClient: {} }),
+      getInstallationSetupUrl: async () => 'https://github.com/settings/installations',
+    },
+    storageService: {},
+  });
+  const res = await request(app).post('/api/auth/storage/create').send({});
+  assert.equal(res.status, 400);
+  assert.match(res.body.error, /name is required/);
+});
+
 test('POST /api/auth/storage/validate requires provider and storageRef', async () => {
   const app = createAuthedApp({
     user: AUTHED_USER,
