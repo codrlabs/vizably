@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { Button, Input } from '../design-system'
+import ScanProgressIndicator from '../components/ScanProgressIndicator'
 import { Ico } from '../lib/icons'
 import { normalizeUrl } from '../utils/urlValidator'
 
@@ -46,10 +47,7 @@ export default function LandingView({ onScan }) {
         </p>
 
         {status === 'scanning' ? (
-          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 18, padding: '20px 0' }}>
-            <div className="ev-spin" style={{ width: 34, height: 34, borderRadius: '50%', border: '3px solid var(--blue-100)', borderTopColor: 'var(--accent)' }} />
-            <div style={{ font: 'var(--font-label)', color: 'var(--text-body)' }}>Scanning {url}…</div>
-          </div>
+          <ScanProgressIndicator url={url} />
         ) : (
           <>
             <div style={{ display: 'flex', gap: 10, alignItems: 'flex-start', justifyContent: 'center', maxWidth: 540, margin: '0 auto', flexWrap: 'wrap' }}>
