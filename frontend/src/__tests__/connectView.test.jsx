@@ -20,6 +20,18 @@ function mockClient(overrides = {}) {
       manifestSummary: { scanCount: 3, schemaVersion: 1, accountId: 'a1' },
     }),
     setupStorage: vi.fn().mockResolvedValue({ success: true }),
+    createStorage: vi.fn().mockResolvedValue({
+      provider: 'github',
+      storageRef: {
+        id: 'R_kgNew',
+        name: 'vizably-new',
+        full_name: 'sam/vizably-new',
+        private: true,
+        html_url: 'https://github.com/sam/vizably-new',
+      },
+      needsInstall: false,
+      installUrl: null,
+    }),
     ...overrides,
   }
 }
@@ -164,5 +176,82 @@ describe('ConnectView', () => {
     )
 
     expect(screen.getByRole('alert')).toHaveTextContent('GitHub sign-in failed')
+  })
+
+  it('creates a new repository then validates for init', async () => {
+    const created = {
+      id: 'R_kgNew',
+      name: 'vizably-new',
+      full_name: 'sam/vizably-new',
+      private: true,
+      html_url: 'https://github.com/sam/vizably-new',
+    }
+    const client = mockClient({
+      createStorage: vi.fn().mockResolvedValue({
+        provider: 'github',
+        storageRef: created,
+        needsInstall: false,
+        installUrl: null,
+      }),
+      validateStorage: vi.fn().mockResolvedValue({
+        status: 'initializable',
+        capabilities: { canRead: true, canWrite: true, canCreate: true },
+      }),
+    })
+
+    render(
+      <ConnectView provider="github" onDone={vi.fn()} onCancel={vi.fn()} client={client} />,
+    )
+
+    await waitForRepoPicker(client)
+
+    fireEvent.click(screen.getByText(/Create a new repository/i))
+    const input = screen.getByDisplayValue('vizably-scans')
+    fireEvent.change(input, { target: { value: 'vizably-new' } })
+
+    fireEvent.click(screen.getByRole('button', { name: /create repository/i }))
+
+    await waitFor(() => expect(client.createStorage).toHaveBeenCalledWith('vizably-new'))
+    await waitFor(() =>
+      expect(client.validateStorage).toHaveBeenCalledWith(
+        'github',
+        expect.objectContaining({ id: 'R_kgNew', full_name: 'sam/vizably-new' }),
+      ),
+    )
+    expect(await screen.findByText('Ready to set up')).toBeInTheDocument()
+  })
+
+  it('shows install hop when create returns needsInstall', async () => {
+    const client = mockClient({
+      createStorage: vi.fn().mockResolvedValue({
+        provider: 'github',
+        storageRef: {
+          id: 'R_kgNew',
+          name: 'vizably-new',
+          full_name: 'sam/vizably-new',
+          private: true,
+          html_url: 'https://github.com/sam/vizably-new',
+        },
+        needsInstall: true,
+        installUrl: 'https://github.com/apps/vizably/installations/new',
+      }),
+    })
+
+    render(
+      <ConnectView provider="github" onDone={vi.fn()} onCancel={vi.fn()} client={client} />,
+    )
+
+    await waitForRepoPicker(client)
+    fireEvent.click(screen.getByText(/Create a new repository/i))
+    fireEvent.change(screen.getByDisplayValue('vizably-scans'), {
+      target: { value: 'vizably-new' },
+    })
+    fireEvent.click(screen.getByRole('button', { name: /create repository/i }))
+
+    expect(await screen.findByText(/Open GitHub App install/i)).toHaveAttribute(
+      'href',
+      'https://github.com/apps/vizably/installations/new',
+    )
+    expect(screen.getByText(/I've added it — refresh/i)).toBeInTheDocument()
   })
 })

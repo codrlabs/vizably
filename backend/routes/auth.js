@@ -75,6 +75,46 @@ function makeAuthRouter({ authService, storageService }) {
     }
   });
 
+  router.post('/storage/create', requireAuth, async (req, res) => {
+    try {
+      const { name, provider = 'github' } = req.body || {};
+      if (provider !== 'github') {
+        return res.status(400).json({
+          error: 'Only provider=github is supported for repository creation',
+        });
+      }
+      if (!name || typeof name !== 'string') {
+        return res.status(400).json({ error: 'name is required' });
+      }
+
+      const clients = await authService.clientsFor(req.user);
+      if (!clients.githubUserClient && !clients.githubClient) {
+        return res.status(400).json({ error: 'GitHub client is not available' });
+      }
+
+      const installUrl = await authService.getInstallationSetupUrl();
+      const result = await storageService.createGitHubRepository(name, clients, {
+        installUrl,
+      });
+      return res.status(201).json({
+        provider: 'github',
+        storageRef: result.storageRef,
+        needsInstall: result.needsInstall,
+        installUrl: result.installUrl,
+      });
+    } catch (err) {
+      console.error(err);
+      const status =
+        err.status === 400 || err.status === 403 || err.status === 422
+          ? err.status
+          : 400;
+      return res.status(status).json({
+        error: err.message || 'Failed to create repository',
+        code: err.code || undefined,
+      });
+    }
+  });
+
   router.post('/storage/validate', requireAuth, async (req, res) => {
     try {
       const { provider, storageRef } = req.body || {};

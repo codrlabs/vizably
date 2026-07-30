@@ -489,19 +489,28 @@ Each developer creates **their own** GitHub App for Phase 1 testing:
 
 1. GitHub → **Settings → Developer settings → GitHub Apps → New GitHub App**
 2. **Callback URL:** `http://localhost:3000/api/auth/github/callback`
-3. **Permissions:** `Contents: Read & write`, `Metadata: Read`
+3. **Permissions:** `Contents: Read & write`, `Metadata: Read`, and
+   `Administration: Read & write` (needed to create a repo for the signed-in
+   user via the App user access token — `POST /user/repos` is UAT-only; do
+   **not** expand classic OAuth to `repo` for this).
 4. After creation, copy **OAuth Client ID** + **Client secret** into
    `backend/.env` as `GITHUB_APP_CLIENT_ID` and `GITHUB_APP_CLIENT_SECRET`
    (use the OAuth Client ID, not the numeric App ID)
-5. Install the app on your account when testing; pick repos during the install flow
+5. Install the app on your account when testing; pick repos during the install
+   flow. Prefer **All repositories** if you want in-app create to skip a second
+   install hop; with **Selected repositories**, Connect returns `needsInstall`
+   so the user can add the new repo once on GitHub.
 
 Personal apps stay in each developer's `.env` only — never commit credentials.
 
 #### Production — project GitHub App (TBD)
 
 Before vizably ships on a real domain, finalize a **codrlabs-owned GitHub App**
-with production callback URL(s) on the deployed backend, the same permissions,
-and secrets in deployment config. Local personal apps are not used in production.
+with production callback URL(s) on the deployed backend, the same permissions
+(`Contents: rw`, `Metadata: r`, `Administration: rw`), and secrets in deployment
+config. Local personal apps are not used in production. Explain Administration on
+the app homepage / Connect UI: it exists so Vizably can create an empty private
+repo without asking the user to leave and create one manually.
 
 #### Reference (classic OAuth App — not chosen)
 

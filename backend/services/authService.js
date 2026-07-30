@@ -144,10 +144,16 @@ class AuthService {
     return null;
   }
 
-  /** @param {string} fullName owner/repo */
-  async _installationSetupMessage(fullName) {
+  /**
+   * Public install / configure URL for the Vizably GitHub App.
+   * Used when a newly created repo is not yet on a selected-repos installation.
+   */
+  async getInstallationSetupUrl() {
     let installUrl = 'https://github.com/settings/installations';
     try {
+      if (!this._hasGitHubAppSigningCredentials()) {
+        return installUrl;
+      }
       const appOctokit = new Octokit({ auth: this._createAppJwt() });
       const { data } = await appOctokit.rest.apps.getAuthenticated();
       if (data?.slug) {
@@ -156,7 +162,12 @@ class AuthService {
     } catch {
       // keep generic installations URL
     }
+    return installUrl;
+  }
 
+  /** @param {string} fullName owner/repo */
+  async _installationSetupMessage(fullName) {
+    const installUrl = await this.getInstallationSetupUrl();
     return (
       `Vizably is not installed on ${fullName}. Install the app at ${installUrl}, ` +
       'grant access to this repository, then sign out and sign in again.'

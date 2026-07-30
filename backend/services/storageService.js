@@ -56,6 +56,172 @@ class StorageService {
   }
 
   /**
+   * Create a private empty GitHub repo for the signed-in user (App UAT).
+   * Does not initialize a Vizably store — caller runs fit-check then init.
+   *
+   * @param {string} name repository name (not owner/name)
+   * @param {StorageClients} clients must include githubUserClient (or githubClient as UAT)
+   * @param {object} [options]
+   * @param {string} [options.installUrl] App install URL when needsInstall
+   * @returns {Promise<{
+   *   storageRef: { id: string, full_name: string, private: boolean, html_url: string, name: string },
+   *   needsInstall: boolean,
+   *   installUrl: string | null,
+   * }>}
+   */
+  async createGitHubRepository(name, clients, options = {}) {
+    const octokit = clients.githubUserClient ?? clients.githubClient;
+    if (!octokit) {
+      throw new Error('GitHub user client is required to create a repository');
+    }
+
+    const repoName = this._normalizeGitHubRepoName(name);
+    let created;
+    try {
+      ({ data: created } = await octokit.rest.repos.createForAuthenticatedUser({
+        name: repoName,
+        private: true,
+        auto_init: false,
+        description: 'Vizably accessibility scan storage',
+      }));
+    } catch (err) {
+      throw this._formatGitHubCreateError(err, repoName);
+    }
+
+    const storageRef = {
+      id: created.node_id,
+      name: created.name,
+      full_name: created.full_name,
+      private: Boolean(created.private),
+      html_url: created.html_url,
+    };
+
+    const [owner, repo] = created.full_name.split('/');
+    const onInstallation = await this._isRepoOnWritableInstallation(octokit, owner, repo);
+    const needsInstall = !onInstallation;
+    const installUrl = needsInstall
+      ? options.installUrl || 'https://github.com/settings/installations'
+      : null;
+
+    return { storageRef, needsInstall, installUrl };
+  }
+
+  /**
+   * True when a Vizably App installation with Contents write includes this repo.
+   * Does not fall back to the user's personal push bit — create needs the App.
+   * @param {import('@octokit/rest').Octokit} octokit user access token client
+   * @param {string} owner
+   * @param {string} repo
+   * @private
+   */
+  async _isRepoOnWritableInstallation(octokit, owner, repo) {
+    const fullName = `${owner}/${repo}`;
+    try {
+      const { data } = await octokit.rest.apps.listInstallationsForAuthenticatedUser({
+        per_page: 100,
+      });
+
+      for (const installation of data.installations ?? []) {
+        if (installation.permissions?.contents !== 'write') {
+          continue;
+        }
+        if (installation.repository_selection === 'all') {
+          return true;
+        }
+
+        const { data: reposData } =
+          await octokit.rest.apps.listInstallationReposForAuthenticatedUser({
+            installation_id: installation.id,
+            per_page: 100,
+          });
+
+        if (reposData.repositories?.some((r) => r.full_name === fullName)) {
+          return true;
+        }
+      }
+    } catch {
+      return false;
+    }
+    return false;
+  }
+
+  /**
+   * @param {string} name
+   * @returns {string}
+   * @private
+   */
+  _normalizeGitHubRepoName(name) {
+    const trimmed = String(name ?? '').trim();
+    if (!trimmed) {
+      const err = new Error('Repository name is required');
+      err.status = 400;
+      err.code = 'INVALID_REPO_NAME';
+      throw err;
+    }
+    if (trimmed.includes('/')) {
+      const err = new Error(
+        'Enter a repository name only (not owner/name). The repo is created under your GitHub account.',
+      );
+      err.status = 400;
+      err.code = 'INVALID_REPO_NAME';
+      throw err;
+    }
+    if (trimmed.length > 100 || !/^[A-Za-z0-9._-]+$/.test(trimmed)) {
+      const err = new Error(
+        'Repository name may only contain letters, numbers, hyphens, underscores, and periods (max 100 characters).',
+      );
+      err.status = 400;
+      err.code = 'INVALID_REPO_NAME';
+      throw err;
+    }
+    return trimmed;
+  }
+
+  /**
+   * @param {unknown} err
+   * @param {string} repoName
+   * @private
+   */
+  _formatGitHubCreateError(err, repoName) {
+    const status = err?.status;
+    const message = err?.response?.data?.message ?? err?.message ?? '';
+    const errors = err?.response?.data?.errors;
+
+    if (status === 422) {
+      const detail = Array.isArray(errors)
+        ? errors.map((e) => e.message || e.code).filter(Boolean).join('; ')
+        : '';
+      const taken =
+        /already exists|name already taken/i.test(message) ||
+        /already exists/i.test(detail);
+      const formatted = new Error(
+        taken
+          ? `A repository named "${repoName}" already exists on your account.`
+          : detail || message || `Could not create repository "${repoName}".`,
+      );
+      formatted.status = 422;
+      formatted.code = taken ? 'REPO_NAME_TAKEN' : 'REPO_CREATE_FAILED';
+      return formatted;
+    }
+
+    if (status === 403) {
+      const formatted = new Error(
+        /not accessible by integration|Resource not accessible/i.test(message)
+          ? 'GitHub App cannot create repositories. Add Repository permissions → Administration: Read and write, accept the permission upgrade on your installation, then sign out and sign in again.'
+          : message || 'GitHub refused to create this repository.',
+      );
+      formatted.status = 403;
+      formatted.code = 'REPO_CREATE_FORBIDDEN';
+      return formatted;
+    }
+
+    const formatted = new Error(message || `Could not create repository "${repoName}".`);
+    formatted.status = status || 500;
+    formatted.code = 'REPO_CREATE_FAILED';
+    return formatted;
+  }
+
+  /**
    * @param {'github' | 'google'} provider
    * @param {object} storageRef
    * @param {StorageClients} clients

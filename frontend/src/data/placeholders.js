@@ -14,8 +14,9 @@ export const PROVIDERS = {
     unit: 'repository',
     unitShort: 'repo',
     article: 'a',
-    scope: 'GitHub App (selected repos)',
-    scopeNote: 'Read & write only on repos you install the app on',
+    scope: 'GitHub App (selected repos + Administration for create)',
+    scopeNote:
+      'Contents on installed repos; Administration lets Vizably create an empty private repo for you',
   },
   google: {
     name: 'Google',

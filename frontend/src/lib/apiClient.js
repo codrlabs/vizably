@@ -94,6 +94,24 @@ export class ApiClient {
   }
 
   /**
+   * Create a private empty GitHub repository for storage onboarding.
+   * @param {string} name repository name (not owner/name)
+   * @returns {Promise<{
+   *   provider: string,
+   *   storageRef: object,
+   *   needsInstall: boolean,
+   *   installUrl: string | null,
+   * }>}
+   */
+  createStorage(name) {
+    return this._request('/api/auth/storage/create', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ provider: 'github', name }),
+    })
+  }
+
+  /**
    * @param {'github' | 'google'} provider
    * @param {object} storageRef
    * @returns {Promise<object>}

@@ -93,12 +93,23 @@ shared via the repo.
 
 1. GitHub → **Settings → Developer settings → GitHub Apps → New GitHub App**.
 2. Set **Callback URL** to `http://localhost:3000/api/auth/github/callback`.
-3. Under **Permissions**, grant at least **Contents: Read & write** and
-   **Metadata: Read** (per the auth/storage design). Optionally add **Account →
-   Email addresses: Read-only** if you want the dashboard to show your GitHub
-   email; sign-in works without it. Vizably writes files via a **single Git commit** when the
-   installation token can use the Git Database API, and falls back to the
-   **Contents API** when needed (empty repos / restricted tokens).
+3. Under **Permissions**, grant at least:
+   - **Contents: Read & write**
+   - **Metadata: Read**
+   - **Administration: Read & write** — required so Vizably can create a private
+     empty repo during Connect onboarding via the user access token
+     (`POST /user/repos`). GitHub documents this as UAT-only; installation
+     tokens cannot create user-owned repos.
+   Optionally add **Account → Email addresses: Read-only** if you want the
+   dashboard to show your GitHub email; sign-in works without it. Vizably writes
+   files via a **single Git commit** when the installation token can use the Git
+   Database API, and falls back to the **Contents API** when needed (empty repos
+   / restricted tokens).
+
+   After adding **Administration**, open
+   [Installed GitHub Apps](https://github.com/settings/installations), accept the
+   permission upgrade, then sign out and sign in again so the user access token
+   picks up the new permission.
 4. Create the app, then open **OAuth credentials** and copy the **Client ID**
    and generate a **Client secret**.
 5. Add to `backend/.env`:
@@ -130,7 +141,7 @@ codrlabs/vizably org or equivalent) with:
 
 - Production callback URL(s) on the deployed backend (e.g.
   `https://api.vizably.example/api/auth/github/callback`)
-- The same permission model (`Contents: rw`, `Metadata: r`)
+- The same permission model (`Contents: rw`, `Metadata: r`, `Administration: rw`)
 - Client ID/secret stored in deployment secrets — **never** committed to git
 
 See also [`docs/guides/auth_storage_guide/githubGoogleAuthStorageImplementation.md`](../docs/guides/auth_storage_guide/githubGoogleAuthStorageImplementation.md) § OAuth App Configuration.
@@ -144,6 +155,7 @@ See also [`docs/guides/auth_storage_guide/githubGoogleAuthStorageImplementation.
 | GET    | `/api/auth/github/callback` | GitHub OAuth callback                        |
 | GET    | `/api/auth/google`        | stub (501) until Phase 3                       |
 | GET    | `/api/auth/storages`      | list GitHub repos (`?provider=github`)         |
+| POST   | `/api/auth/storage/create` | create a private empty GitHub repo (UAT)     |
 | POST   | `/api/auth/storage/validate` | fit-check selected storage                  |
 | POST   | `/api/auth/storage`       | load or init account storage                   |
 | GET    | `/api/auth/user`          | current user profile (no tokens)               |
