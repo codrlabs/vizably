@@ -287,6 +287,28 @@ describe('ConnectView', () => {
     expect(screen.getByDisplayValue('vizably-new')).toBeInTheDocument()
   })
 
+  it('keeps focus on the repository name input while typing', async () => {
+    const client = mockClient()
+    render(
+      <ConnectView provider="github" onDone={vi.fn()} onCancel={vi.fn()} client={client} />,
+    )
+
+    await waitForRepoPicker(client)
+    fireEvent.click(screen.getByText(/Create a new repository/i))
+
+    const input = screen.getByDisplayValue('vizably-scans')
+    input.focus()
+    expect(document.activeElement).toBe(input)
+
+    fireEvent.change(input, { target: { value: 'v' } })
+    expect(document.activeElement).toBe(input)
+    fireEvent.change(input, { target: { value: 'vi' } })
+    expect(document.activeElement).toBe(input)
+    fireEvent.change(input, { target: { value: 'viz' } })
+    expect(document.activeElement).toBe(input)
+    expect(input).toHaveValue('viz')
+  })
+
   it('shows install hop when create returns needsInstall', async () => {
     const client = mockClient({
       createStorage: vi.fn().mockResolvedValue({
