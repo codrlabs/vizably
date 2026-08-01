@@ -252,6 +252,41 @@ describe('ConnectView', () => {
     expect(screen.queryByText(/Open GitHub App install/i)).not.toBeInTheDocument()
   })
 
+  it('normalizes whitespace in the repository name before create', async () => {
+    const client = mockClient({
+      createStorage: vi.fn().mockResolvedValue({
+        provider: 'github',
+        storageRef: {
+          id: 'R_kgNew',
+          name: 'vizably-new',
+          full_name: 'sam/vizably-new',
+          private: true,
+          html_url: 'https://github.com/sam/vizably-new',
+        },
+        needsInstall: false,
+        installUrl: null,
+      }),
+      validateStorage: vi.fn().mockResolvedValue({
+        status: 'initializable',
+        capabilities: { canRead: true, canWrite: true, canCreate: true },
+      }),
+    })
+
+    render(
+      <ConnectView provider="github" onDone={vi.fn()} onCancel={vi.fn()} client={client} />,
+    )
+
+    await waitForRepoPicker(client)
+    fireEvent.click(screen.getByText(/Create a new repository/i))
+    fireEvent.change(screen.getByDisplayValue('vizably-scans'), {
+      target: { value: '  vizably   new  ' },
+    })
+    fireEvent.click(screen.getByRole('button', { name: /create repository/i }))
+
+    await waitFor(() => expect(client.createStorage).toHaveBeenCalledWith('vizably-new'))
+    expect(screen.getByDisplayValue('vizably-new')).toBeInTheDocument()
+  })
+
   it('shows install hop when create returns needsInstall', async () => {
     const client = mockClient({
       createStorage: vi.fn().mockResolvedValue({
