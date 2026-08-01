@@ -3,6 +3,7 @@ import { Button, Card } from '../design-system'
 import { Ico, GoogleMark } from '../lib/icons'
 import { apiClient } from '../lib/apiClient'
 import { PROVIDERS } from '../data/placeholders'
+import { normalizeGitHubRepoName } from '../utils/githubRepoName'
 
 const STATUS_UI = {
   loadable: {
@@ -226,8 +227,13 @@ export default function ConnectView({
     (awaitingCreate ? !newRepoName.trim() : confirmBlocked)
 
   const handleCreateRepo = async () => {
-    const name = newRepoName.trim()
+    const name = normalizeGitHubRepoName(newRepoName)
     if (!name || creating) return
+
+    // Reflect normalized name in the input so users see what will be created.
+    if (name !== newRepoName) {
+      setNewRepoName(name)
+    }
 
     setCreating(true)
     setError(null)

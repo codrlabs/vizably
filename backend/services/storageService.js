@@ -7,6 +7,7 @@
  */
 const crypto = require('crypto');
 const { randomUUID } = require('crypto');
+const { normalizeGitHubRepoName } = require('../../shared/githubRepoName');
 
 const MANIFEST_PATH = 'vizably.json';
 /** Pre-rename store root — still loadable; rewritten to `MANIFEST_PATH` on load. */
@@ -268,14 +269,8 @@ class StorageService {
    * @private
    */
   _normalizeGitHubRepoName(name) {
-    const trimmed = String(name ?? '').trim();
-    if (!trimmed) {
-      const err = new Error('Repository name is required');
-      err.status = 400;
-      err.code = 'INVALID_REPO_NAME';
-      throw err;
-    }
-    if (trimmed.includes('/')) {
+    // Reject owner/name before whitespace collapse so "sam / repo" stays invalid.
+    if (String(name ?? '').includes('/')) {
       const err = new Error(
         'Enter a repository name only (not owner/name). The repo is created under your GitHub account.',
       );
@@ -283,7 +278,15 @@ class StorageService {
       err.code = 'INVALID_REPO_NAME';
       throw err;
     }
-    if (trimmed.length > 100 || !/^[A-Za-z0-9._-]+$/.test(trimmed)) {
+
+    const normalized = normalizeGitHubRepoName(name);
+    if (!normalized) {
+      const err = new Error('Repository name is required');
+      err.status = 400;
+      err.code = 'INVALID_REPO_NAME';
+      throw err;
+    }
+    if (normalized.length > 100 || !/^[A-Za-z0-9._-]+$/.test(normalized)) {
       const err = new Error(
         'Repository name may only contain letters, numbers, hyphens, underscores, and periods (max 100 characters).',
       );
@@ -291,7 +294,7 @@ class StorageService {
       err.code = 'INVALID_REPO_NAME';
       throw err;
     }
-    return trimmed;
+    return normalized;
   }
 
   /**
