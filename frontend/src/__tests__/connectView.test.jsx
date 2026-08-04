@@ -221,6 +221,37 @@ describe('ConnectView', () => {
     expect(await screen.findByText('Ready to set up')).toBeInTheDocument()
   })
 
+  it('shows probe failure message without install CTA', async () => {
+    const err = new Error(
+      'GitHub rate-limited the request while checking App installation access. Wait a moment and refresh — do not reinstall the Vizably GitHub App.',
+    )
+    err.code = 'GITHUB_RATE_LIMITED'
+    err.storageRef = {
+      id: 'R_kgNew',
+      name: 'vizably-new',
+      full_name: 'sam/vizably-new',
+      private: true,
+      html_url: 'https://github.com/sam/vizably-new',
+    }
+    const client = mockClient({
+      createStorage: vi.fn().mockRejectedValue(err),
+    })
+
+    render(
+      <ConnectView provider="github" onDone={vi.fn()} onCancel={vi.fn()} client={client} />,
+    )
+
+    await waitForRepoPicker(client)
+    fireEvent.click(screen.getByText(/Create a new repository/i))
+    fireEvent.change(screen.getByDisplayValue('vizably-scans'), {
+      target: { value: 'vizably-new' },
+    })
+    fireEvent.click(screen.getByRole('button', { name: /create repository/i }))
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(/do not reinstall/i)
+    expect(screen.queryByText(/Open GitHub App install/i)).not.toBeInTheDocument()
+  })
+
   it('shows install hop when create returns needsInstall', async () => {
     const client = mockClient({
       createStorage: vi.fn().mockResolvedValue({

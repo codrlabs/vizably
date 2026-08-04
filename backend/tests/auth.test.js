@@ -214,6 +214,43 @@ test('POST /api/auth/storage/create requires name', async () => {
   assert.match(res.body.error, /name is required/);
 });
 
+test('POST /api/auth/storage/create returns probe failures without needsInstall', async () => {
+  const app = createAuthedApp({
+    user: AUTHED_USER,
+    authService: {
+      clientsFor: async () => ({ githubUserClient: { mock: true } }),
+      getInstallationSetupUrl: async () =>
+        'https://github.com/apps/vizably/installations/new',
+    },
+    storageService: {
+      createGitHubRepository: async () => {
+        const err = new Error(
+          'GitHub rate-limited the request while checking App installation access. ' +
+            'Wait a moment and refresh — do not reinstall the Vizably GitHub App.',
+        );
+        err.status = 429;
+        err.code = 'GITHUB_RATE_LIMITED';
+        err.storageRef = {
+          id: 'R_kgNew',
+          name: 'vizably-new',
+          full_name: 'sam/vizably-new',
+          private: true,
+          html_url: 'https://github.com/sam/vizably-new',
+        };
+        throw err;
+      },
+    },
+  });
+  const res = await request(app)
+    .post('/api/auth/storage/create')
+    .send({ name: 'vizably-new' });
+  assert.equal(res.status, 429);
+  assert.equal(res.body.code, 'GITHUB_RATE_LIMITED');
+  assert.equal(res.body.needsInstall, undefined);
+  assert.equal(res.body.storageRef.full_name, 'sam/vizably-new');
+  assert.match(res.body.error, /do not reinstall/i);
+});
+
 test('POST /api/auth/storage/validate requires provider and storageRef', async () => {
   const app = createAuthedApp({
     user: AUTHED_USER,

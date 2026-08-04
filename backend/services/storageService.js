@@ -97,7 +97,15 @@ class StorageService {
     };
 
     const [owner, repo] = created.full_name.split('/');
-    const onInstallation = await this._isRepoOnWritableInstallation(octokit, owner, repo);
+    let onInstallation;
+    try {
+      onInstallation = await this._isRepoOnWritableInstallation(octokit, owner, repo);
+    } catch (err) {
+      // Repo already exists — attach storageRef so the client can continue without
+      // treating a probe failure as "needs install".
+      err.storageRef = storageRef;
+      throw err;
+    }
     const needsInstall = !onInstallation;
     const installUrl = needsInstall
       ? options.installUrl || 'https://github.com/settings/installations'
@@ -109,6 +117,9 @@ class StorageService {
   /**
    * True when a Vizably App installation with Contents write includes this repo.
    * Does not fall back to the user's personal push bit — create needs the App.
+   * Throws classified errors for API/network failures; returns false only when
+   * the installations list was fetched successfully and the repo is absent.
+   *
    * @param {import('@octokit/rest').Octokit} octokit user access token client
    * @param {string} owner
    * @param {string} repo
@@ -116,33 +127,139 @@ class StorageService {
    */
   async _isRepoOnWritableInstallation(octokit, owner, repo) {
     const fullName = `${owner}/${repo}`;
+    let data;
     try {
-      const { data } = await octokit.rest.apps.listInstallationsForAuthenticatedUser({
+      ({ data } = await octokit.rest.apps.listInstallationsForAuthenticatedUser({
         per_page: 100,
-      });
+      }));
+    } catch (err) {
+      throw this._formatGitHubInstallationProbeError(err);
+    }
 
-      for (const installation of data.installations ?? []) {
-        if (installation.permissions?.contents !== 'write') {
-          continue;
-        }
-        if (installation.repository_selection === 'all') {
-          return true;
-        }
+    for (const installation of data.installations ?? []) {
+      if (installation.permissions?.contents !== 'write') {
+        continue;
+      }
+      if (installation.repository_selection === 'all') {
+        return true;
+      }
 
-        const { data: reposData } =
+      let reposData;
+      try {
+        ({ data: reposData } =
           await octokit.rest.apps.listInstallationReposForAuthenticatedUser({
             installation_id: installation.id,
             per_page: 100,
-          });
-
-        if (reposData.repositories?.some((r) => r.full_name === fullName)) {
-          return true;
-        }
+          }));
+      } catch (err) {
+        throw this._formatGitHubInstallationProbeError(err);
       }
-    } catch {
-      return false;
+
+      if (reposData.repositories?.some((r) => r.full_name === fullName)) {
+        return true;
+      }
     }
+
     return false;
+  }
+
+  /**
+   * Map Octokit / network failures during install probing to actionable errors.
+   * Never treat these as "repo not installed".
+   *
+   * @param {unknown} err
+   * @private
+   */
+  _formatGitHubInstallationProbeError(err) {
+    const status = err?.status;
+    const code = err?.code;
+    const message = String(err?.response?.data?.message ?? err?.message ?? '');
+    const rateLimitRemaining = err?.response?.headers?.['x-ratelimit-remaining'];
+    const isRateLimited =
+      status === 429 ||
+      (status === 403 &&
+        (/rate limit|secondary rate limit/i.test(message) ||
+          rateLimitRemaining === '0' ||
+          rateLimitRemaining === 0));
+
+    if (isRateLimited) {
+      const formatted = new Error(
+        'GitHub rate-limited the request while checking App installation access. ' +
+          'Wait a moment and refresh — do not reinstall the Vizably GitHub App.',
+      );
+      formatted.status = 429;
+      formatted.code = 'GITHUB_RATE_LIMITED';
+      return formatted;
+    }
+
+    if (
+      status === 401 ||
+      (status === 403 &&
+        /bad credentials|requires authentication|unauthorized|token/i.test(message))
+    ) {
+      const formatted = new Error(
+        'GitHub authentication failed while checking App installation access. ' +
+          'Sign out and sign in again, then retry.',
+      );
+      formatted.status = 401;
+      formatted.code = 'GITHUB_AUTH_FAILED';
+      return formatted;
+    }
+
+    if (status === 403) {
+      const formatted = new Error(
+        'GitHub refused the installation check. Confirm the Vizably GitHub App ' +
+          'permissions, then sign out and sign in again. This is not the same as ' +
+          'adding a repo to the installation.',
+      );
+      formatted.status = 403;
+      formatted.code = 'GITHUB_FORBIDDEN';
+      return formatted;
+    }
+
+    const networkCodes = new Set([
+      'ENOTFOUND',
+      'ECONNRESET',
+      'ETIMEDOUT',
+      'ECONNREFUSED',
+      'EAI_AGAIN',
+      'EPIPE',
+      'UND_ERR_CONNECT_TIMEOUT',
+      'UND_ERR_SOCKET',
+    ]);
+    if (
+      networkCodes.has(code) ||
+      /network|fetch failed|socket|timed out|timeout/i.test(message) ||
+      err?.name === 'FetchError' ||
+      err?.name === 'AbortError'
+    ) {
+      const formatted = new Error(
+        'Could not reach GitHub to verify App installation access. Check your ' +
+          'network connection and try again — do not reinstall the Vizably GitHub App.',
+      );
+      formatted.status = 503;
+      formatted.code = 'GITHUB_NETWORK_ERROR';
+      return formatted;
+    }
+
+    if (typeof status === 'number' && status >= 500) {
+      const formatted = new Error(
+        'GitHub is temporarily unavailable while checking App installation access. ' +
+          'Try again shortly — do not reinstall the Vizably GitHub App.',
+      );
+      formatted.status = 503;
+      formatted.code = 'GITHUB_UNAVAILABLE';
+      return formatted;
+    }
+
+    const formatted = new Error(
+      message ||
+        'Could not verify Vizably GitHub App installation access. Try again — ' +
+          'do not reinstall the app unless GitHub confirms it is missing.',
+    );
+    formatted.status = status && status >= 400 ? status : 502;
+    formatted.code = 'GITHUB_INSTALL_PROBE_FAILED';
+    return formatted;
   }
 
   /**
