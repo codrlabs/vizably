@@ -81,6 +81,8 @@ function findRepoByName(storages, name) {
   )
 }
 
+const NAME_CHECK_DEBOUNCE_MS = 400
+
 /**
  * Stable option card — must live outside ConnectView so typing into nested
  * inputs does not remount this tree (and steal focus) on every keystroke.
@@ -184,6 +186,8 @@ export default function ConnectView({
   const [confirming, setConfirming] = useState(false)
   const [error, setError] = useState(storageError)
   const [listError, setListError] = useState(null)
+  const [nameAvailability, setNameAvailability] = useState(null)
+  const [checkingName, setCheckingName] = useState(false)
 
   const selectedRepo = useMemo(
     () => storages.find((r) => r.id === selectedId) ?? null,
@@ -234,6 +238,65 @@ export default function ConnectView({
     setError(storageError)
   }, [storageError])
 
+  useEffect(() => {
+    if (!isGitHub || mode !== 'new' || createdStorageRef) {
+      setNameAvailability(null)
+      setCheckingName(false)
+      return undefined
+    }
+
+    const trimmed = newRepoName.trim()
+    if (!trimmed) {
+      setNameAvailability(null)
+      setCheckingName(false)
+      return undefined
+    }
+
+    // Instant feedback when the loaded repo list already contains this name.
+    const localMatch = findRepoByName(storages, trimmed)
+    if (localMatch) {
+      setCheckingName(false)
+      setNameAvailability({
+        name: trimmed,
+        normalizedName: localMatch.name,
+        full_name: localMatch.full_name,
+        status: 'taken',
+        message: `A repository named "${localMatch.name}" already exists on your account.`,
+      })
+      return undefined
+    }
+
+    let cancelled = false
+    setCheckingName(true)
+    const timer = setTimeout(async () => {
+      try {
+        const result = await client.checkRepoNameAvailability(trimmed)
+        if (!cancelled) {
+          setNameAvailability(result)
+        }
+      } catch (err) {
+        if (!cancelled) {
+          setNameAvailability({
+            name: trimmed,
+            normalizedName: null,
+            full_name: null,
+            status: 'error',
+            message: err.message || 'Could not check repository name availability.',
+          })
+        }
+      } finally {
+        if (!cancelled) {
+          setCheckingName(false)
+        }
+      }
+    }, NAME_CHECK_DEBOUNCE_MS)
+
+    return () => {
+      cancelled = true
+      clearTimeout(timer)
+    }
+  }, [isGitHub, mode, newRepoName, client, createdStorageRef, storages])
+
   const runValidation = useCallback(async (storageRef) => {
     if (!storageRef) {
       setValidation(null)
@@ -273,6 +336,12 @@ export default function ConnectView({
   const initBlocked = proposedAction === 'init' && validation && !canWrite
   const awaitingCreate =
     mode === 'new' && !activeStorageRef && Boolean(newRepoName.trim())
+  const nameUnavailable =
+    awaitingCreate &&
+    (checkingName ||
+      !nameAvailability ||
+      nameAvailability.status === 'taken' ||
+      nameAvailability.status === 'invalid')
   const confirmBlocked =
     !validation ||
     !proposedAction ||
@@ -293,11 +362,11 @@ export default function ConnectView({
     confirming ||
     validating ||
     (mode === 'new' && needsInstall) ||
-    (awaitingCreate ? !newRepoName.trim() : confirmBlocked)
+    (awaitingCreate ? nameUnavailable : confirmBlocked)
 
   const handleCreateRepo = async () => {
     const name = normalizeGitHubRepoName(newRepoName)
-    if (!name || creating) return
+    if (!name || creating || nameUnavailable) return
 
     // Reflect normalized name in the input so users see what will be created.
     if (name !== newRepoName) {
@@ -411,6 +480,13 @@ export default function ConnectView({
   }
 
   const providerIcon = provider === 'google' ? GoogleMark(20) : Ico('Github', 20)
+
+  const nameStatusColor =
+    nameAvailability?.status === 'available'
+      ? 'var(--green-600)'
+      : nameAvailability?.status === 'taken' || nameAvailability?.status === 'invalid'
+        ? 'var(--sev-serious-fg)'
+        : 'var(--text-muted)'
 
   if (!isGitHub) {
     return (
@@ -541,6 +617,7 @@ export default function ConnectView({
                   onChange={(e) => {
                     const next = e.target.value
                     setNewRepoName(next)
+                    setNameAvailability(null)
                     // Only clear create/install state when the typed name no longer
                     // matches the repo we just created — avoids extra re-render churn.
                     if (
@@ -554,6 +631,7 @@ export default function ConnectView({
                     }
                   }}
                   disabled={creating}
+                  aria-describedby="repo-name-availability"
                   style={{
                     flex: 1,
                     border: 'none',
@@ -565,6 +643,23 @@ export default function ConnectView({
                   }}
                 />
               </div>
+              {(checkingName || nameAvailability) && mode === 'new' && (
+                <p
+                  id="repo-name-availability"
+                  role="status"
+                  aria-live="polite"
+                  style={{
+                    fontSize: 'var(--text-xs)',
+                    color: nameStatusColor,
+                    margin: '8px 0 0',
+                    lineHeight: 1.45,
+                  }}
+                >
+                  {checkingName
+                    ? 'Checking availability…'
+                    : nameAvailability?.message}
+                </p>
+              )}
               <p
                 style={{
                   fontSize: 'var(--text-xs)',
