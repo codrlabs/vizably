@@ -481,12 +481,68 @@ export default function ConnectView({
 
   const providerIcon = provider === 'google' ? GoogleMark(20) : Ico('Github', 20)
 
-  const nameStatusColor =
-    nameAvailability?.status === 'available'
-      ? 'var(--green-600)'
-      : nameAvailability?.status === 'taken' || nameAvailability?.status === 'invalid'
-        ? 'var(--sev-serious-fg)'
-        : 'var(--text-muted)'
+  const nameCheckUi = (() => {
+    if (checkingName) {
+      return {
+        tone: 'checking',
+        label: 'Checking',
+        icon: 'Loader2',
+        color: 'var(--text-muted)',
+        bg: 'var(--bg-inset)',
+        border: 'var(--border-default)',
+        inputBorder: 'var(--border-strong)',
+        message: 'Checking availability…',
+      }
+    }
+    switch (nameAvailability?.status) {
+      case 'available':
+        return {
+          tone: 'available',
+          label: 'Available',
+          icon: 'CircleCheck',
+          color: 'var(--green-700)',
+          bg: 'var(--green-50)',
+          border: 'var(--green-100)',
+          inputBorder: 'var(--green-600)',
+          message: nameAvailability.message,
+        }
+      case 'taken':
+        return {
+          tone: 'taken',
+          label: 'Taken',
+          icon: 'CircleX',
+          color: 'var(--sev-serious-fg)',
+          bg: 'var(--sev-serious-bg)',
+          border: 'var(--sev-serious)',
+          inputBorder: 'var(--sev-serious)',
+          message: nameAvailability.message,
+        }
+      case 'invalid':
+        return {
+          tone: 'invalid',
+          label: 'Invalid',
+          icon: 'TriangleAlert',
+          color: 'var(--sev-serious-fg)',
+          bg: 'var(--sev-serious-bg)',
+          border: 'var(--sev-serious)',
+          inputBorder: 'var(--sev-serious)',
+          message: nameAvailability.message,
+        }
+      case 'error':
+        return {
+          tone: 'error',
+          label: 'Retry later',
+          icon: 'TriangleAlert',
+          color: 'var(--text-body)',
+          bg: 'var(--sev-moderate-bg)',
+          border: 'var(--sev-moderate)',
+          inputBorder: 'var(--sev-moderate)',
+          message: nameAvailability.message,
+        }
+      default:
+        return null
+    }
+  })()
 
   if (!isGitHub) {
     return (
@@ -606,8 +662,16 @@ export default function ConnectView({
                   height: 42,
                   padding: '0 12px',
                   background: 'var(--surface-card)',
-                  border: '1px solid var(--border-strong)',
+                  border: `1.5px solid ${nameCheckUi?.inputBorder || 'var(--border-strong)'}`,
                   borderRadius: 'var(--radius-md)',
+                  transition:
+                    'border-color var(--duration-fast) var(--ease-standard), box-shadow var(--duration-fast) var(--ease-standard)',
+                  boxShadow:
+                    nameCheckUi?.tone === 'available'
+                      ? '0 0 0 3px color-mix(in srgb, var(--green-600) 14%, transparent)'
+                      : nameCheckUi?.tone === 'taken' || nameCheckUi?.tone === 'invalid'
+                        ? '0 0 0 3px color-mix(in srgb, var(--sev-serious) 16%, transparent)'
+                        : 'none',
                 }}
               >
                 <span style={{ color: 'var(--text-faint)' }}>{Ico(pv.destIcon, 16)}</span>
@@ -642,23 +706,74 @@ export default function ConnectView({
                     background: 'transparent',
                   }}
                 />
+                {nameCheckUi && (
+                  <span
+                    className={nameCheckUi.tone === 'checking' ? 'ev-spin' : undefined}
+                    style={{
+                      display: 'inline-flex',
+                      color: nameCheckUi.color,
+                      transition: 'color var(--duration-fast) var(--ease-standard)',
+                    }}
+                    aria-hidden="true"
+                  >
+                    {Ico(nameCheckUi.icon, 16, 'currentColor')}
+                  </span>
+                )}
               </div>
-              {(checkingName || nameAvailability) && mode === 'new' && (
-                <p
+              {nameCheckUi && mode === 'new' && (
+                <div
                   id="repo-name-availability"
                   role="status"
                   aria-live="polite"
                   style={{
-                    fontSize: 'var(--text-xs)',
-                    color: nameStatusColor,
-                    margin: '8px 0 0',
-                    lineHeight: 1.45,
+                    display: 'flex',
+                    alignItems: 'flex-start',
+                    gap: 8,
+                    marginTop: 8,
+                    padding: '8px 10px',
+                    borderRadius: 'var(--radius-md)',
+                    background: nameCheckUi.bg,
+                    border: `1px solid ${nameCheckUi.border}`,
+                    animation: 'ev-fade-in 160ms var(--ease-standard)',
                   }}
                 >
-                  {checkingName
-                    ? 'Checking availability…'
-                    : nameAvailability?.message}
-                </p>
+                  <span
+                    style={{
+                      flexShrink: 0,
+                      marginTop: 1,
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: 5,
+                      padding: '2px 7px',
+                      borderRadius: 'var(--radius-pill)',
+                      background: 'var(--surface-card)',
+                      border: `1px solid ${nameCheckUi.border}`,
+                      color: nameCheckUi.color,
+                      font: 'var(--font-label)',
+                      fontSize: 11,
+                      letterSpacing: '0.02em',
+                      textTransform: 'uppercase',
+                    }}
+                  >
+                    <span
+                      className={nameCheckUi.tone === 'checking' ? 'ev-spin' : undefined}
+                      style={{ display: 'inline-flex' }}
+                    >
+                      {Ico(nameCheckUi.icon, 12, 'currentColor')}
+                    </span>
+                    {nameCheckUi.label}
+                  </span>
+                  <p
+                    style={{
+                      margin: 0,
+                      fontSize: 'var(--text-xs)',
+                      color: nameCheckUi.color,
+                      lineHeight: 1.45,
+                    }}
+                  >
+                    {nameCheckUi.message}
+                  </p>
+                </div>
               )}
               <p
                 style={{

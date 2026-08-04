@@ -327,6 +327,12 @@ html, body { margin: 0; height: 100%; background: var(--bg-subtle); }
 @keyframes ev-spin { to { transform: rotate(360deg); } }
 .ev-spin { animation: ev-spin 0.8s linear infinite; }
 
+@keyframes ev-fade-in {
+  from { opacity: 0; transform: translateY(-2px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+.ev-fade-in { animation: ev-fade-in 160ms var(--ease-standard); }
+
 /* Keep code panels dark in dark mode regardless of token ramp */
 [data-theme="dark"] pre { background: #0f1620 !important; color: #e6edf3 !important; border-color: #222c38 !important; }
 

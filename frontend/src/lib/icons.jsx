@@ -1,7 +1,7 @@
 import {
-  ArrowLeft, ArrowRight, Captions, Check, ChevronDown, CircleCheck, Clock,
+  ArrowLeft, ArrowRight, Captions, Check, ChevronDown, CircleCheck, CircleX, Clock,
   Coffee, Download, ExternalLink, Eye, EyeOff, FolderOpen, Gift, GitBranch,
-  Globe, Hand, HardDrive, Heart, House, ImageOff, Keyboard, Leaf,
+  Globe, Hand, HardDrive, Heart, House, ImageOff, Keyboard, Leaf, Loader2,
   ListTree, LogOut, Mail, Moon, Navigation, Palette, Plus, RefreshCw,
   ScanLine, ShieldCheck, Sparkles, Sun, Timer, Trash2, TriangleAlert,
   User, Wrench, Zap,
@@ -27,9 +27,9 @@ function Github({ size = 24, color = 'currentColor', strokeWidth = 2, ...rest })
 // Named imports (rather than `import * as lucide`) keep the lucide
 // library tree-shakeable; add icons here as views need them.
 const ICONS = {
-  ArrowLeft, ArrowRight, Captions, Check, ChevronDown, CircleCheck, Clock,
+  ArrowLeft, ArrowRight, Captions, Check, ChevronDown, CircleCheck, CircleX, Clock,
   Coffee, Download, ExternalLink, Eye, EyeOff, FolderOpen, Gift, GitBranch,
-  Github, Globe, Hand, HardDrive, Heart, House, ImageOff, Keyboard, Leaf,
+  Github, Globe, Hand, HardDrive, Heart, House, ImageOff, Keyboard, Leaf, Loader2,
   ListTree, LogOut, Mail, Moon, Navigation, Palette, Plus, RefreshCw,
   ScanLine, ShieldCheck, Sparkles, Sun, Timer, Trash2, TriangleAlert,
   User, Wrench, Zap,
