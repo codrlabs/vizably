@@ -75,6 +75,37 @@ function makeAuthRouter({ authService, storageService }) {
     }
   });
 
+  router.get('/storage/name-availability', requireAuth, async (req, res) => {
+    try {
+      const provider = req.query.provider || 'github';
+      const name = req.query.name;
+      if (provider !== 'github') {
+        return res.status(400).json({
+          error: 'Only provider=github is supported for name availability',
+        });
+      }
+      if (!name || typeof name !== 'string') {
+        return res.status(400).json({ error: 'name is required' });
+      }
+
+      const clients = await authService.clientsFor(req.user);
+      if (!clients.githubUserClient && !clients.githubClient) {
+        return res.status(400).json({ error: 'GitHub client is not available' });
+      }
+
+      const result = await storageService.checkGitHubRepoNameAvailability(
+        name,
+        clients,
+      );
+      return res.json({ provider: 'github', ...result });
+    } catch (err) {
+      console.error(err);
+      return res.status(500).json({
+        error: err.message || 'Failed to check repository name availability',
+      });
+    }
+  });
+
   router.post('/storage/create', requireAuth, async (req, res) => {
     try {
       const { name, provider = 'github' } = req.body || {};

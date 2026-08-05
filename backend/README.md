@@ -155,6 +155,7 @@ See also [`docs/guides/auth_storage_guide/githubGoogleAuthStorageImplementation.
 | GET    | `/api/auth/github/callback` | GitHub OAuth callback                        |
 | GET    | `/api/auth/google`        | stub (501) until Phase 3                       |
 | GET    | `/api/auth/storages`      | list GitHub repos (`?provider=github`)         |
+| GET    | `/api/auth/storage/name-availability` | check repo name (`?name=&provider=github`) |
 | POST   | `/api/auth/storage/create` | create a private empty GitHub repo (UAT)     |
 | POST   | `/api/auth/storage/validate` | fit-check selected storage                  |
 | POST   | `/api/auth/storage`       | load or init account storage                   |

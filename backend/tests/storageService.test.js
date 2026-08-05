@@ -70,6 +70,11 @@ function createMockGitHubClient(initial = {}) {
       return state.refCreated;
     },
     rest: {
+      users: {
+        getAuthenticated: async () => ({
+          data: { login: initial.login || 'sam' },
+        }),
+      },
       repos: {
         listForAuthenticatedUser: async () => ({
           data: [
@@ -81,7 +86,12 @@ function createMockGitHubClient(initial = {}) {
             },
           ],
         }),
-        get: async () => ({ data: repoMeta }),
+        get: async (args) => {
+          if (typeof initial.repoGet === 'function') {
+            return initial.repoGet(args);
+          }
+          return { data: repoMeta };
+        },
         createForAuthenticatedUser: async ({ name, private: isPrivate, auto_init }) => {
           if (initial.createRepoError) {
             throw initial.createRepoError;
@@ -284,6 +294,46 @@ test('listGitHubRepos maps node id and repo metadata', async () => {
   assert.equal(repos.length, 1);
   assert.equal(repos[0].id, STORAGE_REF.id);
   assert.equal(repos[0].full_name, STORAGE_REF.full_name);
+});
+
+test('checkGitHubRepoNameAvailability returns available on 404', async () => {
+  const storageService = new StorageService();
+  const client = createMockGitHubClient({
+    repoGet: async () => {
+      const err = new Error('Not Found');
+      err.status = 404;
+      throw err;
+    },
+  });
+  const result = await storageService.checkGitHubRepoNameAvailability('fresh-repo', {
+    githubUserClient: client,
+  });
+  assert.equal(result.status, 'available');
+  assert.equal(result.full_name, 'sam/fresh-repo');
+});
+
+test('checkGitHubRepoNameAvailability returns taken when repo exists', async () => {
+  const storageService = new StorageService();
+  const client = createMockGitHubClient({
+    repoGet: async ({ repo }) => ({
+      data: { name: repo, full_name: `sam/${repo}` },
+    }),
+  });
+  const result = await storageService.checkGitHubRepoNameAvailability('site-audits', {
+    githubUserClient: client,
+  });
+  assert.equal(result.status, 'taken');
+  assert.match(result.message, /already exists/);
+});
+
+test('checkGitHubRepoNameAvailability returns invalid for bad names', async () => {
+  const storageService = new StorageService();
+  const client = createMockGitHubClient();
+  const result = await storageService.checkGitHubRepoNameAvailability('bad name!', {
+    githubUserClient: client,
+  });
+  assert.equal(result.status, 'invalid');
+  assert.equal(result.normalizedName, null);
 });
 
 test('createGitHubRepository creates a private empty repo and returns storageRef', async () => {

@@ -81,6 +81,8 @@ function findRepoByName(storages, name) {
   )
 }
 
+const NAME_CHECK_DEBOUNCE_MS = 400
+
 /**
  * Stable option card — must live outside ConnectView so typing into nested
  * inputs does not remount this tree (and steal focus) on every keystroke.
@@ -184,6 +186,8 @@ export default function ConnectView({
   const [confirming, setConfirming] = useState(false)
   const [error, setError] = useState(storageError)
   const [listError, setListError] = useState(null)
+  const [nameAvailability, setNameAvailability] = useState(null)
+  const [checkingName, setCheckingName] = useState(false)
 
   const selectedRepo = useMemo(
     () => storages.find((r) => r.id === selectedId) ?? null,
@@ -234,6 +238,65 @@ export default function ConnectView({
     setError(storageError)
   }, [storageError])
 
+  useEffect(() => {
+    if (!isGitHub || mode !== 'new' || createdStorageRef) {
+      setNameAvailability(null)
+      setCheckingName(false)
+      return undefined
+    }
+
+    const trimmed = newRepoName.trim()
+    if (!trimmed) {
+      setNameAvailability(null)
+      setCheckingName(false)
+      return undefined
+    }
+
+    // Instant feedback when the loaded repo list already contains this name.
+    const localMatch = findRepoByName(storages, trimmed)
+    if (localMatch) {
+      setCheckingName(false)
+      setNameAvailability({
+        name: trimmed,
+        normalizedName: localMatch.name,
+        full_name: localMatch.full_name,
+        status: 'taken',
+        message: `A repository named "${localMatch.name}" already exists on your account.`,
+      })
+      return undefined
+    }
+
+    let cancelled = false
+    setCheckingName(true)
+    const timer = setTimeout(async () => {
+      try {
+        const result = await client.checkRepoNameAvailability(trimmed)
+        if (!cancelled) {
+          setNameAvailability(result)
+        }
+      } catch (err) {
+        if (!cancelled) {
+          setNameAvailability({
+            name: trimmed,
+            normalizedName: null,
+            full_name: null,
+            status: 'error',
+            message: err.message || 'Could not check repository name availability.',
+          })
+        }
+      } finally {
+        if (!cancelled) {
+          setCheckingName(false)
+        }
+      }
+    }, NAME_CHECK_DEBOUNCE_MS)
+
+    return () => {
+      cancelled = true
+      clearTimeout(timer)
+    }
+  }, [isGitHub, mode, newRepoName, client, createdStorageRef, storages])
+
   const runValidation = useCallback(async (storageRef) => {
     if (!storageRef) {
       setValidation(null)
@@ -273,6 +336,12 @@ export default function ConnectView({
   const initBlocked = proposedAction === 'init' && validation && !canWrite
   const awaitingCreate =
     mode === 'new' && !activeStorageRef && Boolean(newRepoName.trim())
+  const nameUnavailable =
+    awaitingCreate &&
+    (checkingName ||
+      !nameAvailability ||
+      nameAvailability.status === 'taken' ||
+      nameAvailability.status === 'invalid')
   const confirmBlocked =
     !validation ||
     !proposedAction ||
@@ -293,11 +362,11 @@ export default function ConnectView({
     confirming ||
     validating ||
     (mode === 'new' && needsInstall) ||
-    (awaitingCreate ? !newRepoName.trim() : confirmBlocked)
+    (awaitingCreate ? nameUnavailable : confirmBlocked)
 
   const handleCreateRepo = async () => {
     const name = normalizeGitHubRepoName(newRepoName)
-    if (!name || creating) return
+    if (!name || creating || nameUnavailable) return
 
     // Reflect normalized name in the input so users see what will be created.
     if (name !== newRepoName) {
@@ -411,6 +480,69 @@ export default function ConnectView({
   }
 
   const providerIcon = provider === 'google' ? GoogleMark(20) : Ico('Github', 20)
+
+  const nameCheckUi = (() => {
+    if (checkingName) {
+      return {
+        tone: 'checking',
+        label: 'Checking',
+        icon: 'Loader2',
+        color: 'var(--text-muted)',
+        bg: 'var(--bg-inset)',
+        border: 'var(--border-default)',
+        inputBorder: 'var(--border-strong)',
+        message: 'Checking availability…',
+      }
+    }
+    switch (nameAvailability?.status) {
+      case 'available':
+        return {
+          tone: 'available',
+          label: 'Available',
+          icon: 'CircleCheck',
+          color: 'var(--green-700)',
+          bg: 'var(--green-50)',
+          border: 'var(--green-100)',
+          inputBorder: 'var(--green-600)',
+          message: nameAvailability.message,
+        }
+      case 'taken':
+        return {
+          tone: 'taken',
+          label: 'Taken',
+          icon: 'CircleX',
+          color: 'var(--sev-serious-fg)',
+          bg: 'var(--sev-serious-bg)',
+          border: 'var(--sev-serious)',
+          inputBorder: 'var(--sev-serious)',
+          message: nameAvailability.message,
+        }
+      case 'invalid':
+        return {
+          tone: 'invalid',
+          label: 'Invalid',
+          icon: 'TriangleAlert',
+          color: 'var(--sev-serious-fg)',
+          bg: 'var(--sev-serious-bg)',
+          border: 'var(--sev-serious)',
+          inputBorder: 'var(--sev-serious)',
+          message: nameAvailability.message,
+        }
+      case 'error':
+        return {
+          tone: 'error',
+          label: 'Retry later',
+          icon: 'TriangleAlert',
+          color: 'var(--text-body)',
+          bg: 'var(--sev-moderate-bg)',
+          border: 'var(--sev-moderate)',
+          inputBorder: 'var(--sev-moderate)',
+          message: nameAvailability.message,
+        }
+      default:
+        return null
+    }
+  })()
 
   if (!isGitHub) {
     return (
@@ -530,8 +662,16 @@ export default function ConnectView({
                   height: 42,
                   padding: '0 12px',
                   background: 'var(--surface-card)',
-                  border: '1px solid var(--border-strong)',
+                  border: `1.5px solid ${nameCheckUi?.inputBorder || 'var(--border-strong)'}`,
                   borderRadius: 'var(--radius-md)',
+                  transition:
+                    'border-color var(--duration-fast) var(--ease-standard), box-shadow var(--duration-fast) var(--ease-standard)',
+                  boxShadow:
+                    nameCheckUi?.tone === 'available'
+                      ? '0 0 0 3px color-mix(in srgb, var(--green-600) 14%, transparent)'
+                      : nameCheckUi?.tone === 'taken' || nameCheckUi?.tone === 'invalid'
+                        ? '0 0 0 3px color-mix(in srgb, var(--sev-serious) 16%, transparent)'
+                        : 'none',
                 }}
               >
                 <span style={{ color: 'var(--text-faint)' }}>{Ico(pv.destIcon, 16)}</span>
@@ -541,6 +681,7 @@ export default function ConnectView({
                   onChange={(e) => {
                     const next = e.target.value
                     setNewRepoName(next)
+                    setNameAvailability(null)
                     // Only clear create/install state when the typed name no longer
                     // matches the repo we just created — avoids extra re-render churn.
                     if (
@@ -554,6 +695,7 @@ export default function ConnectView({
                     }
                   }}
                   disabled={creating}
+                  aria-describedby="repo-name-availability"
                   style={{
                     flex: 1,
                     border: 'none',
@@ -564,7 +706,75 @@ export default function ConnectView({
                     background: 'transparent',
                   }}
                 />
+                {nameCheckUi && (
+                  <span
+                    className={nameCheckUi.tone === 'checking' ? 'ev-spin' : undefined}
+                    style={{
+                      display: 'inline-flex',
+                      color: nameCheckUi.color,
+                      transition: 'color var(--duration-fast) var(--ease-standard)',
+                    }}
+                    aria-hidden="true"
+                  >
+                    {Ico(nameCheckUi.icon, 16, 'currentColor')}
+                  </span>
+                )}
               </div>
+              {nameCheckUi && mode === 'new' && (
+                <div
+                  id="repo-name-availability"
+                  role="status"
+                  aria-live="polite"
+                  style={{
+                    display: 'flex',
+                    alignItems: 'flex-start',
+                    gap: 8,
+                    marginTop: 8,
+                    padding: '8px 10px',
+                    borderRadius: 'var(--radius-md)',
+                    background: nameCheckUi.bg,
+                    border: `1px solid ${nameCheckUi.border}`,
+                    animation: 'ev-fade-in 160ms var(--ease-standard)',
+                  }}
+                >
+                  <span
+                    style={{
+                      flexShrink: 0,
+                      marginTop: 1,
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: 5,
+                      padding: '2px 7px',
+                      borderRadius: 'var(--radius-pill)',
+                      background: 'var(--surface-card)',
+                      border: `1px solid ${nameCheckUi.border}`,
+                      color: nameCheckUi.color,
+                      font: 'var(--font-label)',
+                      fontSize: 11,
+                      letterSpacing: '0.02em',
+                      textTransform: 'uppercase',
+                    }}
+                  >
+                    <span
+                      className={nameCheckUi.tone === 'checking' ? 'ev-spin' : undefined}
+                      style={{ display: 'inline-flex' }}
+                    >
+                      {Ico(nameCheckUi.icon, 12, 'currentColor')}
+                    </span>
+                    {nameCheckUi.label}
+                  </span>
+                  <p
+                    style={{
+                      margin: 0,
+                      fontSize: 'var(--text-xs)',
+                      color: nameCheckUi.color,
+                      lineHeight: 1.45,
+                    }}
+                  >
+                    {nameCheckUi.message}
+                  </p>
+                </div>
+              )}
               <p
                 style={{
                   fontSize: 'var(--text-xs)',

@@ -57,6 +57,101 @@ class StorageService {
   }
 
   /**
+   * Check whether a repository name is available under the signed-in user.
+   * Uses GET /repos/{owner}/{repo}: 404 → available, 200 → taken.
+   *
+   * @param {string} name
+   * @param {StorageClients} clients
+   * @returns {Promise<{
+   *   name: string,
+   *   normalizedName: string | null,
+   *   full_name: string | null,
+   *   status: 'available' | 'taken' | 'invalid' | 'error',
+   *   message: string,
+   * }>}
+   */
+  async checkGitHubRepoNameAvailability(name, clients) {
+    const octokit = clients.githubUserClient ?? clients.githubClient;
+    if (!octokit) {
+      throw new Error('GitHub user client is required to check repository name availability');
+    }
+
+    let normalized;
+    try {
+      normalized = this._normalizeGitHubRepoName(name);
+    } catch (err) {
+      return {
+        name: String(name ?? '').trim(),
+        normalizedName: null,
+        full_name: null,
+        status: 'invalid',
+        message: err.message || 'Invalid repository name',
+      };
+    }
+
+    let owner;
+    try {
+      const { data: user } = await octokit.rest.users.getAuthenticated();
+      owner = user.login;
+    } catch (err) {
+      return {
+        name: normalized,
+        normalizedName: normalized,
+        full_name: null,
+        status: 'error',
+        message:
+          err?.status === 401
+            ? 'GitHub authentication failed. Sign out and sign in again.'
+            : 'Could not look up your GitHub username to check availability.',
+      };
+    }
+
+    const fullName = `${owner}/${normalized}`;
+    try {
+      await octokit.rest.repos.get({ owner, repo: normalized });
+      return {
+        name: normalized,
+        normalizedName: normalized,
+        full_name: fullName,
+        status: 'taken',
+        message: `A repository named "${normalized}" already exists on your account.`,
+      };
+    } catch (err) {
+      if (err?.status === 404) {
+        return {
+          name: normalized,
+          normalizedName: normalized,
+          full_name: fullName,
+          status: 'available',
+          message: `${fullName} is available.`,
+        };
+      }
+
+      const message = err?.response?.data?.message ?? err?.message ?? '';
+      if (
+        err?.status === 429 ||
+        (err?.status === 403 && /rate limit/i.test(message))
+      ) {
+        return {
+          name: normalized,
+          normalizedName: normalized,
+          full_name: fullName,
+          status: 'error',
+          message: 'GitHub rate-limited the availability check. Try again in a moment.',
+        };
+      }
+
+      return {
+        name: normalized,
+        normalizedName: normalized,
+        full_name: fullName,
+        status: 'error',
+        message: 'Could not check repository name availability. Try again.',
+      };
+    }
+  }
+
+  /**
    * Create a private empty GitHub repo for the signed-in user (App UAT).
    * Does not initialize a Vizably store — caller runs fit-check then init.
    *
