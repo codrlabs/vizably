@@ -244,19 +244,27 @@ function createMockGitHubClient(initial = {}) {
           headSha = sha;
         },
       },
-      apps: installationProbe
+      apps: installationProbe || initial.installationProbeError
         ? {
-            listInstallationsForAuthenticatedUser: async () => ({
-              data: {
-                installations: installationProbe.map((entry) => ({
-                  id: entry.id,
-                  permissions: { contents: entry.contents },
-                  repository_selection: entry.repository_selection || 'selected',
-                })),
-              },
-            }),
+            listInstallationsForAuthenticatedUser: async () => {
+              if (initial.installationProbeError) {
+                throw initial.installationProbeError;
+              }
+              return {
+                data: {
+                  installations: (installationProbe ?? []).map((entry) => ({
+                    id: entry.id,
+                    permissions: { contents: entry.contents },
+                    repository_selection: entry.repository_selection || 'selected',
+                  })),
+                },
+              };
+            },
             listInstallationReposForAuthenticatedUser: async ({ installation_id }) => {
-              const entry = installationProbe.find((item) => item.id === installation_id);
+              if (initial.installationReposError) {
+                throw initial.installationReposError;
+              }
+              const entry = (installationProbe ?? []).find((item) => item.id === installation_id);
               return {
                 data: {
                   repositories: (entry?.repos ?? []).map((full_name) => ({ full_name })),
@@ -337,6 +345,79 @@ test('createGitHubRepository skips install hop when installation covers all repo
     githubUserClient: client,
   });
   assert.equal(result.needsInstall, false);
+});
+
+test('createGitHubRepository surfaces rate limits instead of needsInstall', async () => {
+  const storageService = new StorageService();
+  const probeErr = new Error('API rate limit exceeded');
+  probeErr.status = 403;
+  probeErr.response = {
+    data: { message: 'API rate limit exceeded' },
+    headers: { 'x-ratelimit-remaining': '0' },
+  };
+  const client = createMockGitHubClient({ installationProbeError: probeErr });
+  await assert.rejects(
+    () => storageService.createGitHubRepository('vizably-new', { githubUserClient: client }),
+    (err) => {
+      assert.equal(err.code, 'GITHUB_RATE_LIMITED');
+      assert.equal(err.status, 429);
+      assert.match(err.message, /rate-limited/i);
+      assert.match(err.message, /do not reinstall/i);
+      assert.equal(err.storageRef?.full_name, 'sam/vizably-new');
+      return true;
+    },
+  );
+});
+
+test('createGitHubRepository surfaces network failures instead of needsInstall', async () => {
+  const storageService = new StorageService();
+  const probeErr = new Error('getaddrinfo ENOTFOUND api.github.com');
+  probeErr.code = 'ENOTFOUND';
+  const client = createMockGitHubClient({ installationProbeError: probeErr });
+  await assert.rejects(
+    () => storageService.createGitHubRepository('vizably-new', { githubUserClient: client }),
+    (err) => {
+      assert.equal(err.code, 'GITHUB_NETWORK_ERROR');
+      assert.equal(err.status, 503);
+      assert.match(err.message, /network/i);
+      assert.equal(err.storageRef?.name, 'vizably-new');
+      return true;
+    },
+  );
+});
+
+test('createGitHubRepository surfaces auth failures instead of needsInstall', async () => {
+  const storageService = new StorageService();
+  const probeErr = new Error('Bad credentials');
+  probeErr.status = 401;
+  probeErr.response = { data: { message: 'Bad credentials' }, headers: {} };
+  const client = createMockGitHubClient({ installationProbeError: probeErr });
+  await assert.rejects(
+    () => storageService.createGitHubRepository('vizably-new', { githubUserClient: client }),
+    (err) => {
+      assert.equal(err.code, 'GITHUB_AUTH_FAILED');
+      assert.equal(err.status, 401);
+      assert.match(err.message, /authentication failed/i);
+      return true;
+    },
+  );
+});
+
+test('createGitHubRepository surfaces GitHub outages instead of needsInstall', async () => {
+  const storageService = new StorageService();
+  const probeErr = new Error('Server Error');
+  probeErr.status = 502;
+  probeErr.response = { data: { message: 'Server Error' }, headers: {} };
+  const client = createMockGitHubClient({ installationProbeError: probeErr });
+  await assert.rejects(
+    () => storageService.createGitHubRepository('vizably-new', { githubUserClient: client }),
+    (err) => {
+      assert.equal(err.code, 'GITHUB_UNAVAILABLE');
+      assert.equal(err.status, 503);
+      assert.match(err.message, /temporarily unavailable/i);
+      return true;
+    },
+  );
 });
 
 test('createGitHubRepository rejects invalid names', async () => {

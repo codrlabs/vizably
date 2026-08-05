@@ -104,13 +104,13 @@ function makeAuthRouter({ authService, storageService }) {
       });
     } catch (err) {
       console.error(err);
-      const status =
-        err.status === 400 || err.status === 403 || err.status === 422
-          ? err.status
-          : 400;
+      const allowed = new Set([400, 401, 403, 422, 429, 502, 503]);
+      const status = allowed.has(err.status) ? err.status : 400;
       return res.status(status).json({
         error: err.message || 'Failed to create repository',
         code: err.code || undefined,
+        // Present when the repo was created but install probing failed.
+        storageRef: err.storageRef || undefined,
       });
     }
   });

@@ -41,15 +41,27 @@ export class ApiClient {
 
     if (!res.ok) {
       let message = `HTTP ${res.status}: ${res.statusText}`
+      let code
+      let storageRef
       try {
         const body = await res.json()
         if (body?.error) {
           message = body.error
         }
+        if (body?.code) {
+          code = body.code
+        }
+        if (body?.storageRef) {
+          storageRef = body.storageRef
+        }
       } catch {
         // Non-JSON error bodies fall back to status text.
       }
-      throw new Error(message)
+      const err = new Error(message)
+      err.status = res.status
+      if (code) err.code = code
+      if (storageRef) err.storageRef = storageRef
+      throw err
     }
 
     return res.json()

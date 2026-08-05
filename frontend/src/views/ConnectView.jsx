@@ -264,6 +264,26 @@ export default function ConnectView({
         })
       }
     } catch (err) {
+      // Probe failures (rate limit / network) may still return storageRef — keep
+      // the created repo selected without the "install App" CTA.
+      if (err.storageRef) {
+        const ref = err.storageRef
+        const asListItem = {
+          id: ref.id,
+          name: ref.name || ref.full_name?.split('/')[1],
+          full_name: ref.full_name,
+          private: ref.private ?? true,
+          html_url: ref.html_url,
+        }
+        setCreatedStorageRef(asListItem)
+        setStorages((prev) => {
+          if (prev.some((r) => r.id === asListItem.id)) return prev
+          return [asListItem, ...prev]
+        })
+        setSelectedId(asListItem.id)
+        setNeedsInstall(false)
+        setInstallUrl(null)
+      }
       setError(err.message || 'Failed to create repository')
     } finally {
       setCreating(false)
