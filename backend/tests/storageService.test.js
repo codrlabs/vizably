@@ -431,6 +431,28 @@ test('createGitHubRepository rejects invalid names', async () => {
     () => storageService.createGitHubRepository('bad name!', { githubUserClient: client }),
     /letters, numbers/,
   );
+  await assert.rejects(
+    () => storageService.createGitHubRepository('   ', { githubUserClient: client }),
+    /required/,
+  );
+});
+
+test('createGitHubRepository normalizes whitespace before create', async () => {
+  const storageService = new StorageService();
+  const client = createMockGitHubClient({
+    installationProbe: [
+      {
+        id: 1,
+        contents: 'write',
+        repos: ['sam/vizably-new'],
+      },
+    ],
+  });
+  const result = await storageService.createGitHubRepository('  vizably   new  ', {
+    githubUserClient: client,
+  });
+  assert.equal(result.storageRef.full_name, 'sam/vizably-new');
+  assert.equal(result.storageRef.name, 'vizably-new');
 });
 
 test('createGitHubRepository maps name-taken conflicts', async () => {
