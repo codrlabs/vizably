@@ -82,6 +82,75 @@ function findRepoByName(storages, name) {
 }
 
 /**
+ * Stable option card — must live outside ConnectView so typing into nested
+ * inputs does not remount this tree (and steal focus) on every keystroke.
+ */
+function ConnectOption({ active, onSelect, icon, title, desc, children }) {
+  return (
+    <div
+      onClick={onSelect}
+      style={{
+        border: `1.5px solid ${active ? 'var(--accent)' : 'var(--border-default)'}`,
+        background: active ? 'var(--accent-subtle)' : 'var(--surface-card)',
+        borderRadius: 'var(--radius-md)',
+        padding: 'var(--space-4)',
+        cursor: 'pointer',
+        transition:
+          'border-color var(--duration-fast) var(--ease-standard), background var(--duration-fast) var(--ease-standard)',
+      }}
+    >
+      <div style={{ display: 'flex', alignItems: 'flex-start', gap: 12 }}>
+        <span
+          style={{
+            flexShrink: 0,
+            width: 22,
+            height: 22,
+            marginTop: 1,
+            borderRadius: '50%',
+            border: `2px solid ${active ? 'var(--accent)' : 'var(--border-strong)'}`,
+            display: 'inline-flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+          }}
+        >
+          {active && (
+            <span
+              style={{
+                width: 10,
+                height: 10,
+                borderRadius: '50%',
+                background: 'var(--accent)',
+              }}
+            />
+          )}
+        </span>
+        <div style={{ flex: 1 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <span style={{ color: active ? 'var(--accent)' : 'var(--text-muted)' }}>
+              {Ico(icon, 17, 'currentColor')}
+            </span>
+            <span style={{ font: 'var(--font-label)', color: 'var(--text-strong)' }}>
+              {title}
+            </span>
+          </div>
+          <p
+            style={{
+              fontSize: 'var(--text-sm)',
+              color: 'var(--text-muted)',
+              margin: '4px 0 0',
+              lineHeight: 1.45,
+            }}
+          >
+            {desc}
+          </p>
+          {active && children && <div style={{ marginTop: 12 }}>{children}</div>}
+        </div>
+      </div>
+    </div>
+  )
+}
+
+/**
  * Connect storage — pick a GitHub repo, run fit-check, load or init account.
  *
  * @param {object} props
@@ -343,72 +412,6 @@ export default function ConnectView({
 
   const providerIcon = provider === 'google' ? GoogleMark(20) : Ico('Github', 20)
 
-  const Option = ({ id, icon, title, desc, children }) => {
-    const active = mode === id
-    return (
-      <div
-        onClick={() => setMode(id)}
-        style={{
-          border: `1.5px solid ${active ? 'var(--accent)' : 'var(--border-default)'}`,
-          background: active ? 'var(--accent-subtle)' : 'var(--surface-card)',
-          borderRadius: 'var(--radius-md)',
-          padding: 'var(--space-4)',
-          cursor: 'pointer',
-          transition:
-            'border-color var(--duration-fast) var(--ease-standard), background var(--duration-fast) var(--ease-standard)',
-        }}
-      >
-        <div style={{ display: 'flex', alignItems: 'flex-start', gap: 12 }}>
-          <span
-            style={{
-              flexShrink: 0,
-              width: 22,
-              height: 22,
-              marginTop: 1,
-              borderRadius: '50%',
-              border: `2px solid ${active ? 'var(--accent)' : 'var(--border-strong)'}`,
-              display: 'inline-flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-            }}
-          >
-            {active && (
-              <span
-                style={{
-                  width: 10,
-                  height: 10,
-                  borderRadius: '50%',
-                  background: 'var(--accent)',
-                }}
-              />
-            )}
-          </span>
-          <div style={{ flex: 1 }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-              <span style={{ color: active ? 'var(--accent)' : 'var(--text-muted)' }}>
-                {Ico(icon, 17, 'currentColor')}
-              </span>
-              <span style={{ font: 'var(--font-label)', color: 'var(--text-strong)' }}>
-                {title}
-              </span>
-            </div>
-            <p
-              style={{
-                fontSize: 'var(--text-sm)',
-                color: 'var(--text-muted)',
-                margin: '4px 0 0',
-                lineHeight: 1.45,
-              }}
-            >
-              {desc}
-            </p>
-            {active && children && <div style={{ marginTop: 12 }}>{children}</div>}
-          </div>
-        </div>
-      </div>
-    )
-  }
-
   if (!isGitHub) {
     return (
       <div
@@ -501,8 +504,9 @@ export default function ConnectView({
 
         <Card padding="var(--space-5)">
           <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-            <Option
-              id="new"
+            <ConnectOption
+              active={mode === 'new'}
+              onSelect={() => setMode('new')}
               icon="Plus"
               title={`Create a new ${pv.unit}`}
               desc={`Create a fresh private ${pv.unitShort} under your GitHub account and set it up for Vizably.`}
@@ -535,10 +539,19 @@ export default function ConnectView({
                   value={newRepoName}
                   onClick={(e) => e.stopPropagation()}
                   onChange={(e) => {
-                    setNewRepoName(e.target.value)
-                    setCreatedStorageRef(null)
-                    setNeedsInstall(false)
-                    setInstallUrl(null)
+                    const next = e.target.value
+                    setNewRepoName(next)
+                    // Only clear create/install state when the typed name no longer
+                    // matches the repo we just created — avoids extra re-render churn.
+                    if (
+                      createdStorageRef &&
+                      next.trim() !== createdStorageRef.name &&
+                      next.trim() !== createdStorageRef.full_name
+                    ) {
+                      setCreatedStorageRef(null)
+                      setNeedsInstall(false)
+                      setInstallUrl(null)
+                    }
                   }}
                   disabled={creating}
                   style={{
@@ -620,10 +633,11 @@ export default function ConnectView({
                   </div>
                 </div>
               )}
-            </Option>
+            </ConnectOption>
 
-            <Option
-              id="existing"
+            <ConnectOption
+              active={mode === 'existing'}
+              onSelect={() => setMode('existing')}
               icon="FolderOpen"
               title={`Use an existing ${pv.unit}`}
               desc={`Pick ${pv.article} ${pv.unit} from your GitHub account.`}
@@ -696,7 +710,7 @@ export default function ConnectView({
               >
                 Refresh repository list
               </button>
-            </Option>
+            </ConnectOption>
           </div>
         </Card>
 
