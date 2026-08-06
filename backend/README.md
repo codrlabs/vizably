@@ -182,10 +182,18 @@ prefix; anything outside it is answered by the static SPA instead.
 ## Deploying to Vercel
 
 The frontend is served as a static build and the whole Express app runs as one
-catch-all function at [`api/[...path].js`](../api/%5B...path%5D.js), configured
-by [`vercel.json`](../vercel.json). Express is exported directly — Vercel's Node
+function at [`api/index.js`](../api/index.js), configured by
+[`vercel.json`](../vercel.json). Express is exported directly — Vercel's Node
 runtime invokes the export as `(req, res)`, which is already an Express app's
 signature, so no `serverless-http` wrapper is involved.
+
+Routing is done by two rewrites, in order: `/api/(.*)` sends every nested API
+path to the function, then `/(.*)` falls back to `index.html` for the SPA.
+Vercel checks the filesystem before rewrites, so real static assets always win.
+The first rewrite is required — Vercel's `api/` directory maps file paths to URL
+paths and supports only a single dynamic segment, so `api/index.js` alone would
+answer `/api` and nothing beneath it. Catch-all filenames (`[...path].js`) are a
+Next.js convention and do not apply to a plain `api/` directory.
 
 Set these in the Vercel dashboard for **Production and Preview** — never in
 `vercel.json`, which is public config and holds no values:
@@ -210,8 +218,17 @@ vercel dev      # from the repo root; serves the SPA and the function together
 Notes on the runtime, checked against the current Hobby limits:
 
 - `maxDuration` is capped at 60s deliberately; the tier allows 300s, but a
-  runaway scan should fail fast rather than burn the free budget.
-- `memory` is intentionally unset — Hobby's default is already its 2GB maximum.
+  runaway scan should fail fast rather than burn the free budget. The
+  `functions` key is a **glob**, so it must be `api/**` — `api/index.js` is
+  fine too, but a bracketed filename would be read as a character class and
+  silently match nothing, leaving the function on the plan default.
+- `memory` is intentionally unset — it cannot be set in `vercel.json` at all
+  once Fluid compute is on (dashboard only), and Hobby's default is already its
+  2GB maximum.
+- `app.set('trust proxy', 1)` in `app.js` is required, not cosmetic. Vercel
+  terminates TLS at the edge and forwards plain http; without it `req.protocol`
+  stays `http`, and the cookie layer throws rather than send a `Secure` cookie,
+  breaking every authenticated request in production while passing locally.
 - The install command uses `--omit=dev` for the backend so `puppeteer` and its
   bundled Chromium never land on disk. On Vercel the scanner uses
   `puppeteer-core` with `@sparticuz/chromium`; locally and in Docker it uses the

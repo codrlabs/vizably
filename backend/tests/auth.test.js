@@ -121,6 +121,42 @@ test('session survives a fresh app instance because the cookie is the store', as
   assert.equal(read.body.marker, 'kept');
 });
 
+test('a Secure cookie is set behind a TLS-terminating proxy', async () => {
+  // Vercel terminates TLS at the edge and forwards plain http with
+  // X-Forwarded-Proto: https. Without `trust proxy` the cookie layer throws
+  // "Cannot send secure cookie over unencrypted connection" and every
+  // authenticated request 500s — in production only, since locally
+  // NODE_ENV is not 'production' and the cookie is not marked Secure.
+  const previousEnv = process.env.NODE_ENV;
+  process.env.NODE_ENV = 'production';
+
+  try {
+    const authService = new AuthService({
+      sessionSecret: TEST_SESSION_SECRET,
+      encryptionKey: TEST_ENCRYPTION_KEY,
+    });
+    const app = buildApp({ authService, storageService: new StorageService() });
+    app.get('/__probe', (req, res) => {
+      req.session.marker = 'kept';
+      return res.json({ protocol: req.protocol, secure: req.secure });
+    });
+
+    const res = await request(app)
+      .get('/__probe')
+      .set('X-Forwarded-Proto', 'https');
+
+    assert.equal(res.status, 200);
+    assert.equal(res.body.protocol, 'https');
+    assert.equal(res.body.secure, true);
+
+    const cookie = String(res.headers['set-cookie'] || '');
+    assert.match(cookie, /vizably\.sid=/);
+    assert.match(cookie, /secure/i);
+  } finally {
+    process.env.NODE_ENV = previousEnv;
+  }
+});
+
 test('session payload stays well under the 4KB cookie limit', async () => {
   const express = require('express');
   const authService = new AuthService({

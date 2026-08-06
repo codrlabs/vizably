@@ -1,10 +1,12 @@
 /**
- * Vercel serverless entry — one catch-all function for the whole API.
+ * Vercel serverless entry — one function for the whole API.
  *
- * A file at `api/[...path].js` claims every `/api/*` path, and Vercel checks
- * functions before rewrites, so the SPA fallback in vercel.json cannot shadow
- * it. Express already mounts its routes under `/api`, and Vercel passes the
- * original path through, so requests arrive exactly as they do in local dev.
+ * By itself this file only answers `/api` exactly; Vercel's `api/` directory
+ * maps file paths to URL paths and supports a single dynamic segment, not
+ * arbitrary depth. Catch-all filenames like `[...path].js` are a Next.js
+ * convention and do not apply here. The `/api/(.*)` rewrite in vercel.json is
+ * what routes every nested path to this function, which is the pattern
+ * Vercel's own Express guide uses.
  *
  * No `serverless-http` wrapper: Vercel's Node runtime invokes the export as
  * `(req, res)`, which is precisely an Express app's signature.
