@@ -130,9 +130,30 @@ shared via the repo.
      credentials alone are not enough for Contents writes.
    - `SESSION_SECRET` and `ENCRYPTION_KEY` (see above)
 
-Install the app on your account and select the repos you want to test with when
-prompted during sign-in. If setup fails with **Resource not accessible by
-integration**, your app installation likely still has **Contents: Read** only:
+**Install the app on the account that will own the scans repo**, which is the
+account you sign in as — not only on an organisation. Repository *creation* goes
+through your user access token, and that token can only act where an
+installation exists, so with the app installed on an org alone the Connect
+screen reports "GitHub App cannot create repositories" even though
+Administration is granted. The permission is on the app; the missing piece is
+the installation.
+
+Creating a repo and writing into it also use **different credentials**, which is
+worth knowing because they fail at different moments:
+
+| Step | Credential | Needs |
+|---|---|---|
+| Create the scans repo | user access token | an installation on that account |
+| Write scan files | installation token | that repo selected in the installation |
+
+So the order is: install on your own account (selecting any repo, since the
+scans repo does not exist yet), sign out and back in so the token sees the new
+installation, let Connect create the repo, then add that repo to the
+installation's selected repositories. Choosing **All repositories** collapses
+those steps at the cost of granting access to everything you own.
+
+If setup fails with **Resource not accessible by integration**, the installation
+likely still has **Contents: Read** only:
 
 1. GitHub App → **Permissions** → **Repository permissions** → **Contents:
    Read and write** → **Save changes**

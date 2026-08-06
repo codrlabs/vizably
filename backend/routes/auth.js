@@ -30,6 +30,26 @@ function makeAuthRouter({ authService, storageService }) {
     (req, res) => {
       res.redirect(`${frontendOrigin}/connect?provider=github`);
     },
+    // Passport reports a failed code-for-token exchange as a bare
+    // "Failed to obtain access token" and discards the provider's reason,
+    // which leaves a 500 with nothing to act on. GitHub's actual answer —
+    // incorrect_client_credentials, redirect_uri_mismatch, bad_verification_code
+    // — is on err.oauthError, so log it and send the user somewhere useful
+    // instead of a stack trace.
+    (err, _req, res, _next) => {
+      const providerError = err?.oauthError;
+      const detail =
+        (providerError?.data && String(providerError.data)) ||
+        providerError?.message ||
+        err?.message ||
+        'unknown error';
+
+      console.error('GitHub OAuth callback failed:', detail);
+
+      return res.redirect(
+        `${frontendOrigin}/connect?provider=github&error=auth_failed`,
+      );
+    },
   );
 
   router.get('/google', (_req, res) => {
