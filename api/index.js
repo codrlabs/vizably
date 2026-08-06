@@ -46,13 +46,18 @@ function restorePath(url) {
   const parsed = new URL(url, 'http://localhost');
   const carried = parsed.searchParams.get(PATH_PARAM);
 
-  if (carried === null) {
-    return url; // No rewrite marker: nothing to undo.
-  }
+  // Only a request flattened onto /api can have lost its path, so the marker
+  // is read there and nowhere else. A client may send the same parameter, but
+  // on any other path it is stripped and ignored rather than allowed to steer
+  // routing. (Even when honoured it only aliases a path the caller could have
+  // requested directly — every route authenticates on its own.)
+  const wasFlattened = parsed.pathname === '/api' && carried !== null;
 
   parsed.searchParams.delete(PATH_PARAM);
   const query = parsed.searchParams.toString();
-  return `/api/${carried}${query ? `?${query}` : ''}`;
+  const pathname = wasFlattened ? `/api/${carried}` : parsed.pathname;
+
+  return `${pathname}${query ? `?${query}` : ''}`;
 }
 
 module.exports = (req, res) => {

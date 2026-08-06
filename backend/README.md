@@ -195,6 +195,15 @@ paths and supports only a single dynamic segment, so `api/index.js` alone would
 answer `/api` and nothing beneath it. Catch-all filenames (`[...path].js`) are a
 Next.js convention and do not apply to a plain `api/` directory.
 
+That rewrite carries the real path in a `__vzpath` query marker, and the entry
+puts it back before Express routes. This is deliberate: reports disagree on
+whether a rewrite forwards the original path or the rewritten one, and
+`vercel dev` is known to behave differently from production. Rather than depend
+on which is true, the path is passed explicitly, so preserved and flattened
+requests route identically. The marker is stripped before any handler runs, is
+only honoured on a request actually flattened onto `/api`, and is covered by
+`tests/apiEntry.test.js`.
+
 Set these in the Vercel dashboard for **Production and Preview** — never in
 `vercel.json`, which is public config and holds no values:
 
@@ -229,10 +238,43 @@ Notes on the runtime, checked against the current Hobby limits:
   terminates TLS at the edge and forwards plain http; without it `req.protocol`
   stays `http`, and the cookie layer throws rather than send a `Secure` cookie,
   breaking every authenticated request in production while passing locally.
-- The install command uses `--omit=dev` for the backend so `puppeteer` and its
-  bundled Chromium never land on disk. On Vercel the scanner uses
-  `puppeteer-core` with `@sparticuz/chromium`; locally and in Docker it uses the
-  full `puppeteer`, and `PUPPETEER_EXECUTABLE_PATH` overrides both.
+- The install sets `PUPPETEER_SKIP_DOWNLOAD=true` for the backend. The package
+  itself is only ~155 KB — the browser lives in `~/.cache/puppeteer`, outside
+  the traced tree — so it is the *download*, not the bundle, that is worth
+  avoiding. Measured bundle weight is `puppeteer-core` (13 MB) plus
+  `@sparticuz/chromium` (66 MB), comfortably inside the 250 MB limit.
+- The scanner picks its browser by **probing, not by platform flag**. It uses
+  the full `puppeteer` when `executablePath()` points at a binary that exists —
+  true for local dev and for Docker via `PUPPETEER_EXECUTABLE_PATH` — and falls
+  back to `puppeteer-core` with `@sparticuz/chromium` otherwise. Keying off
+  `VERCEL` would break silently if a project ever disabled system environment
+  variables.
+- **Node must be ≥ 22.17** (`@sparticuz/chromium`'s own `engines`). The root
+  `package.json` pins `24.x`; it declares nothing else, and `frontend/` and
+  `backend/` remain separate packages with their own lockfiles.
+
+### Security notes
+
+- **The session cookie is signed, not encrypted.** `cookie-session` base64
+  encodes the payload, so a user can read their own profile out of it. That is
+  their own data, the cookie is `httpOnly`, and the GitHub token inside stays
+  AES-256-GCM encrypted under `ENCRYPTION_KEY`. Do note the posture change from
+  a server-side store: the token *ciphertext* now travels to the browser, so
+  treat `ENCRYPTION_KEY` as the thing that protects it, and rotating that key
+  invalidates every session.
+- **The Passport `regenerate`/`save` shims do not reintroduce session
+  fixation.** Passport calls `regenerate()` so a pre-set session id cannot
+  survive login. There is no server-side id here — the cookie's *contents* are
+  the session, and they are re-signed on login, so an attacker who planted a
+  pre-login cookie learns nothing and holds a value that no longer
+  authenticates. Nothing written before login is read after it either: the one
+  pre-login key, `authProvider`, is never read back.
+- **Fluid compute shares one instance across concurrent invocations**, and it
+  is on by default. Each scan holds a Chromium process, so a burst of
+  simultaneous scans is the realistic memory ceiling on a 2 GB instance. The
+  browser is always closed in a `finally`, which bounds it per request; if
+  bursts ever cause trouble, set `"fluid": false` in `vercel.json` for
+  one-request-per-instance isolation.
 
 ## See also
 

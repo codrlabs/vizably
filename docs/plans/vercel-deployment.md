@@ -51,7 +51,7 @@ right architecture regardless of Vercel: the user's repo is the source of truth 
 | Piece today | On Vercel |
 |-------------|-----------|
 | `frontend/` Vite app | Static build, served from `frontend/dist` |
-| `backend/` Express app | One catch all serverless function at `api/[...path].js` |
+| `backend/` Express app | One serverless function at `api/index.js`, fed by an `/api/(.*)` rewrite |
 | `express-session` (memory) | Stateless signed cookie session (`cookie-session`) |
 | Scan list cached in the session | Fetched from `GET /api/scans`, backed by the user's repo |
 | Puppeteer full package | `puppeteer-core` plus `@sparticuz/chromium` in the function |
@@ -145,42 +145,41 @@ rewrite is the wrong tool — it would hand Express a path it does not mount. Re
 
 ```json
 {
-  "installCommand": "npm --prefix frontend install && npm --prefix backend install",
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "installCommand": "npm --prefix frontend install && PUPPETEER_SKIP_DOWNLOAD=true npm --prefix backend install",
   "buildCommand": "npm --prefix frontend run build",
   "outputDirectory": "frontend/dist",
   "functions": {
-    "api/[...path].js": { "maxDuration": 60 }
+    "api/**": { "maxDuration": 60 }
   },
-  "rewrites": [{ "source": "/(.*)", "destination": "/index.html" }]
+  "rewrites": [
+    { "source": "/api/(.*)", "destination": "/api?__vzpath=$1" },
+    { "source": "/(.*)", "destination": "/index.html" }
+  ]
 }
 ```
 
-- **`installCommand` is not optional.** There is no root `package.json`, so Vercel's default
-  install does nothing and `backend/node_modules` stays empty — the function crashes on its
-  first `require`. npm workspaces would be tidier but would mean a merged lockfile and would
-  disturb the Docker setup. Not now.
-- **No `/api` rewrite.** A file at `api/[...path].js` already claims every `/api/*` path, and
-  Vercel checks functions before rewrites, so the SPA catch all cannot shadow them.
+- **`installCommand` is not optional.** Without a root manifest carrying dependencies, Vercel's
+  default install leaves `backend/node_modules` empty and the function crashes on its first
+  `require`. `PUPPETEER_SKIP_DOWNLOAD=true` skips the ~170MB browser download during the build;
+  the package itself is only ~155KB and stays installed so it remains resolvable.
+- **The `functions` key is a glob.** `api/**` matches. A bracketed filename is read as a
+  character class and matches nothing, silently leaving the function on the plan default.
+- **`/api/(.*)` is required.** Vercel's `api/` directory maps file paths to URL paths with a
+  single dynamic segment, so `api/index.js` alone answers `/api` and nothing beneath it.
+  Catch-all filenames are a Next.js convention that does not apply here. The rewrite carries
+  the real path in `__vzpath` because sources disagree on whether a rewrite forwards the
+  original or rewritten path, and `vercel dev` differs from production — passing it explicitly
+  makes both cases route identically.
+- **Filesystem beats rewrites,** so real static assets are never shadowed by the SPA fallback.
 
-`api/[...path].js`:
+`api/index.js` exports the Express app and restores the path before routing. No
+`serverless-http`: Vercel's Node runtime invokes the export as `(req, res)`, which is already
+an Express app's signature — verified locally against the built handler.
 
-```js
-const buildApp = require('../backend/app');
-
-// app.js exports the buildApp factory, not an assembled app. index.js — which
-// holds these guards and the listen call — is never loaded here.
-if (!process.env.SESSION_SECRET) throw new Error('SESSION_SECRET is required');
-if (!process.env.ENCRYPTION_KEY) throw new Error('ENCRYPTION_KEY is required');
-
-module.exports = buildApp();
-```
-
-No `serverless-http`. Vercel's Node runtime invokes the export as `(req, res)` and an Express
-app is exactly that signature. **Smoke test this first** — if Express 5 misbehaves against
-Vercel's req/res, add `serverless-http` and wrap it.
-
-Also add `.vercel` to `.gitignore` here; `vercel dev` and `vercel link` write project linkage
-into it.
+Also add `.vercel` to `.gitignore` here. A root `package.json` declaring only `engines.node`
+pins the runtime, since `@sparticuz/chromium` requires Node >= 22.17; `frontend/` and
+`backend/` stay separate packages with their own lockfiles.
 
 ### 7. `docs: document the Vercel deployment`
 
@@ -232,10 +231,27 @@ site like Stripe and confirm it completes or fails cleanly inside 60 seconds.
 1. **Cold starts.** The first scan after idle spends a few seconds spinning up Chromium.
    Acceptable for a free tool.
 2. **Very heavy pages** can still exceed 60 seconds. They fail with an error, not a crash.
-3. **Cookie headroom.** After commit 1 the session is about 816 bytes against a 4KB limit.
-   Anything added to the session user from here needs a size check.
+3. **Cookie headroom.** The session measures ~906 bytes against a 4KB limit, and stays flat as
+   scans accumulate. Anything added to the session user needs a size check;
+   `tests/auth.test.js` pins it.
 4. **Preview URLs and OAuth.** Random preview domains will not pass GitHub OAuth unless added
    to the App.
+5. **Concurrent scans share one instance.** Fluid compute is on by default and multiplexes
+   invocations, so simultaneous scans are the realistic memory ceiling on 2GB. The browser is
+   closed in a `finally`, which bounds it per request; `"fluid": false` buys isolation if
+   bursts ever bite.
+
+## Why not Netlify
+
+Checked, because there is an existing account with build minutes on the legacy plan. The
+blocker is runtime, not build: **Netlify's synchronous functions cap at 10 seconds** on the
+free tier (26s on Pro, by request), and a Puppeteer scan is Chromium start plus page load plus
+axe injection — the branch this work sits on exists precisely because heavy sites were slow.
+Background functions allow 15 minutes but return `202` immediately, which means a polling
+architecture rather than a config change. Vercel Hobby allows 300s and we cap at 60.
+
+The build-minutes concern is solved directly on Vercel: `vercel build` locally then
+`vercel deploy --prebuilt` skips remote build entirely.
 
 ## Explicitly deferred, not in this pass
 
@@ -243,4 +259,7 @@ site like Stripe and confirm it completes or fails cleanly inside 60 seconds.
    gets us live first; this is the next optimization.
 2. Google Drive. Stays frozen on its branch until the GitHub experience is solid.
 3. Splitting the scan into its own function. Only if bundle size or cold starts demand it.
-4. A root `package.json` with npm workspaces. Tidier, but it would disturb Docker.
+4. npm workspaces. The root manifest declares only `engines`; merging lockfiles would disturb
+   Docker for no gain here.
+5. OAuth `state` for login-CSRF hardening. Pre-existing gap in `passport-github2` setup,
+   unrelated to this deployment work, and worth its own change with a real OAuth round trip.

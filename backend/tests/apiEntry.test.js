@@ -52,6 +52,16 @@ test('the path marker never reaches handlers', async () => {
   assert.deepEqual(Object.keys(res.body).sort(), ['authenticated', 'user']);
 });
 
+test('a client-supplied path marker cannot steer routing on a real path', async () => {
+  // The marker is only honoured when the path was actually flattened to /api.
+  // Here the path survived, so the marker must be ignored and stripped.
+  const res = await request(handler).get(
+    '/api/problems/contrast-1?__vzpath=auth/status',
+  );
+  assert.equal(res.status, 200);
+  assert.equal(res.body.id, 'contrast-1');
+});
+
 test('health check is reachable outside the /api prefix', async () => {
   const res = await request(handler).get('/health');
   assert.equal(res.status, 200);
