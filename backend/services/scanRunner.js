@@ -14,20 +14,47 @@
  */
 
 const defaultValidate = require('./ssrfGuard').validate;
-const defaultPuppeteer = require('puppeteer');
 const { transform: defaultTransform } = require('./axeTransformer');
 const defaultAxe = require('axe-core');
+
+/**
+ * Resolve the browser driver at call time rather than module load time.
+ *
+ * `puppeteer` ships its own Chromium download, which is far too large for a
+ * serverless bundle, so on Vercel we use `puppeteer-core` against the
+ * Brotli-compressed binary from `@sparticuz/chromium` instead. Requiring
+ * lazily keeps the heavy package off the import path where it is not wanted.
+ *
+ * @param {object} [injected] browser driver supplied by a caller or a test
+ * @returns {Promise<{ puppeteer: object, chromium: object | null }>}
+ */
+async function resolveBrowser(injected) {
+  if (injected) {
+    return { puppeteer: injected, chromium: null };
+  }
+  if (process.env.VERCEL) {
+    return {
+      puppeteer: require('puppeteer-core'),
+      chromium: require('@sparticuz/chromium'),
+    };
+  }
+  // Local dev and Docker, where the Dockerfile points PUPPETEER_EXECUTABLE_PATH
+  // at the system Chromium installed via apk.
+  return { puppeteer: require('puppeteer'), chromium: null };
+}
 
 class ScanRunner {
   /**
    * @param {object} [deps]
-   * @param {typeof defaultPuppeteer} [deps.puppeteer]
+   * @param {object} [deps.puppeteer] browser driver; defaults are resolved lazily
    * @param {{ source: string }} [deps.axe]
    * @param {(raw: object) => object} [deps.transform]
    * @param {(url: string) => { ok: boolean, reason?: string }} [deps.validate]
    */
   constructor(deps = {}) {
-    this.puppeteer = deps.puppeteer ?? defaultPuppeteer;
+    // Left null when not injected so the default is resolved per run — the
+    // right driver depends on the environment, not on construction time.
+    this.puppeteer = deps.puppeteer ?? null;
     this.axe = deps.axe ?? defaultAxe;
     this.transform = deps.transform ?? defaultTransform;
     this.validate = deps.validate ?? defaultValidate;
@@ -42,13 +69,17 @@ class ScanRunner {
 
     // In Docker we use the system Chromium installed via apk (see Dockerfile)
     // because Puppeteer's bundled download doesn't run on Alpine/musl.
-    // `--no-sandbox` is required when the container runs as root.
+    // `--no-sandbox` is required when the container runs as root. On Vercel,
+    // @sparticuz/chromium supplies both the args and the unpacked binary.
+    const { puppeteer, chromium } = await resolveBrowser(this.puppeteer);
     let browser;
 
-    browser = await this.puppeteer.launch({
+    browser = await puppeteer.launch({
       headless: true,
-      executablePath: process.env.PUPPETEER_EXECUTABLE_PATH || undefined,
-      args: ['--no-sandbox', '--disable-setuid-sandbox'],
+      executablePath:
+        process.env.PUPPETEER_EXECUTABLE_PATH ||
+        (chromium ? await chromium.executablePath() : undefined),
+      args: chromium ? chromium.args : ['--no-sandbox', '--disable-setuid-sandbox'],
     });
     try {
       const page = await browser.newPage();
