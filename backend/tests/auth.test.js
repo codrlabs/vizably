@@ -6,7 +6,7 @@ const assert = require('node:assert/strict');
 const request = require('supertest');
 
 const { TEST_ENCRYPTION_KEY, TEST_SESSION_SECRET } = require('./helpers/testEnv');
-const buildApp = require('../app');
+const { buildApp } = require('../app');
 const AuthService = require('../services/authService');
 const StorageService = require('../services/storageService');
 

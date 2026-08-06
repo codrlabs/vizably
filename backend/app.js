@@ -64,4 +64,8 @@ function buildApp(overrides = {}) {
   return app;
 }
 
-module.exports = buildApp;
+// A named export rather than `module.exports = buildApp`. A bare function
+// export has no single agreed shape once anything tries to bridge CommonJS and
+// ESM — it becomes `.default` in some toolchains and the function itself in
+// others. Naming it removes that ambiguity for every consumer.
+exports.buildApp = buildApp;
