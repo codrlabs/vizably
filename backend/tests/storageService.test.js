@@ -615,6 +615,30 @@ test('validateStorage probes write access with user client when IO uses installa
   assert.equal(result.capabilities.canWrite, true);
 });
 
+test('validateStorage finds App write access when repo is past first install page', async () => {
+  const storageService = new StorageService();
+  const repos = Array.from({ length: 101 }, (_, i) =>
+    i === 100 ? STORAGE_REF.full_name : `sam/other-${i}`,
+  );
+  const client = createMockGitHubClient({
+    repoMeta: { permissions: { pull: true, push: false, admin: false } },
+    installationProbe: [
+      {
+        id: 1,
+        contents: 'write',
+        repos,
+      },
+    ],
+  });
+  const result = await storageService.validateStorage('github', STORAGE_REF, {
+    githubClient: client,
+    githubUserClient: client,
+  });
+  assert.equal(result.status, 'initializable');
+  assert.equal(result.capabilities.canRead, true);
+  assert.equal(result.capabilities.canWrite, true);
+});
+
 test('validateStorage returns unrelated when root has other files', async () => {
   const storageService = new StorageService();
   const client = createMockGitHubClient({
