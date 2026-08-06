@@ -177,11 +177,27 @@ function AppRoutes() {
 
   useEffect(() => { window.scrollTo(0, 0) }, [location.pathname])
 
+  /**
+   * The saved-scan list is not carried on the session — it grows with every
+   * scan and the session has to fit in a cookie — so it is fetched from the
+   * user's own store and merged into the client-side profile.
+   */
+  const withSavedScans = useCallback(async (profile) => {
+    if (!hasAttachedStorage(profile)) return profile
+    try {
+      const { scanCount, scans } = await apiClient.listScans()
+      return mergeAccountUpdate(profile, { scanCount, scans })
+    } catch {
+      // Profile is still usable; the list retries on the next dashboard visit.
+      return profile
+    }
+  }, [])
+
   const refreshUser = useCallback(async () => {
-    const profile = await apiClient.getUser()
+    const profile = await withSavedScans(await apiClient.getUser())
     setUser(profile)
     return profile
-  }, [])
+  }, [withSavedScans])
 
   useEffect(() => {
     let cancelled = false
@@ -190,7 +206,7 @@ function AppRoutes() {
       try {
         const status = await apiClient.getAuthStatus()
         if (status.authenticated) {
-          const profile = await apiClient.getUser()
+          const profile = await withSavedScans(await apiClient.getUser())
           if (!cancelled) setUser(profile)
         } else if (!cancelled) {
           setUser(null)
@@ -204,7 +220,7 @@ function AppRoutes() {
 
     bootstrapAuth()
     return () => { cancelled = true }
-  }, [])
+  }, [withSavedScans])
 
   const shellUser = useMemo(() => toShellUser(user), [user])
   const savedScans = useMemo(() => toSavedScans(user?.account), [user])
