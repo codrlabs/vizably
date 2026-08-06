@@ -211,25 +211,27 @@ prefix; anything outside it is answered by the static SPA instead.
 
 ## Deploying to Vercel
 
-The repo deploys as **one Vercel project containing two services** — Vercel's
-native model for a frontend and a backend in the same repository. It detects
-both automatically: `frontend/` as Vite, `backend/` as Express.
+The frontend builds to a static bundle and the whole Express app runs as one
+function at [`api/index.js`](../api/index.js), built by `@vercel/node`.
 
 ```
 request -> filesystem (real static assets win)
-        -> /api/*  -> backend service   (backend/index.js, unchanged)
-        -> /*      -> frontend service  (frontend/dist, SPA fallback)
+        -> /api/*  -> the function   (Express, via the /api rewrite)
+        -> /*      -> index.html     (SPA fallback)
 ```
 
-`backend/index.js` needs no changes. Vercel supports the `app.listen()` pattern
-and wraps it, reporting `Using index.js as the root entrypoint` at build time.
-There is no `api/` directory, no wrapper module, and no `serverless-http`.
+**Do not switch this to Vercel's `services` model**, even though the CLI
+detects `frontend/` as Vite and `backend/` as Express and will offer to. That
+path builds the backend by *bundling* it with rolldown, which wrapped
+`app.js` in a lazy CommonJS shim and handed the entry an empty object — every
+route returned 500 with `buildApp is not a function`, and no export shape fixed
+it. `@vercel/node` **traces and copies** files instead, so the code that runs is
+the code you wrote. The tell, if it ever regresses: local modules fail to
+resolve inside the function while npm packages resolve fine.
 
-**A service receives the original path.** `GET /api/auth/status` arrives at
-Express as `/api/auth/status`, not `/auth/status`, so the existing route mounts
-work as they do locally. Routing into a service is also final: if nothing
-inside matches, Vercel returns that service's 404 rather than falling through
-to the other service.
+`framework: null` in `vercel.json` is load-bearing — it overrides the project's
+framework preset, which Vercel pins to `services` the moment you link with
+services declared.
 
 Set these in the Vercel dashboard for **Production and Preview** — never in
 `vercel.json`, which is public config and holds no values:
@@ -267,18 +269,28 @@ vercel dev      # serves them together
 
 ### Verified against a real build
 
-Confirmed by inspecting `.vercel/output`, not assumed:
+Confirmed on a preview deployment and by inspecting `.vercel/output`, not
+assumed:
 
-- Output is `services/backend/functions/index.func` plus
-  `services/frontend/static`. A CLI warning about "no functions or static
-  directory" is a false alarm in services mode.
-- `maxDuration: 60` reaches the built function config. The `functions` key is a
-  **glob scoped to the service** — an earlier bracketed filename matched
-  nothing and silently left the function on the plan default of 300s.
-- Runtime resolves to `nodejs24.x` from `engines.node` in
-  `backend/package.json`. `@sparticuz/chromium` requires **Node ≥ 22.17**, so
-  this matters; `frontend/` and `backend/` stay separate packages with their
-  own lockfiles.
+- `/health`, `/api/auth/status` and `/api/problems/:id` return 200,
+  `/api/scans` 401s while unauthenticated, `/dashboard` falls through to the
+  SPA, and `POST /api/scan` completes a real Chromium scan returning axe-core
+  results.
+- The function's `backend/` directory contains `app.js` — plain traced source.
+  If it ever contains `app.cjs` instead, something has switched it back to a
+  bundled build and the API will break.
+- **`@octokit/rest` is pinned to 20.1.1, the last CommonJS release.** v21+ are
+  ESM-only, and Vercel precompiles functions to bytecode, a path that cannot
+  `require()` an ES module even on Node 24, where plain `node` can. Locally the
+  same `require` works, so an upgrade here passes every test and then fails
+  only in production. Every endpoint used (repos, git, apps, users) is
+  unchanged in 20.x.
+- `maxDuration: 60` reaches the built function config; the `functions` key is a
+  **glob**, and an earlier bracketed filename matched nothing and silently left
+  the function on the plan default of 300s.
+- Runtime resolves to `nodejs24.x`. `@sparticuz/chromium` requires
+  **Node ≥ 22.17**, so this matters; `frontend/` and `backend/` stay separate
+  packages with their own lockfiles.
 - `memory` cannot be set in `vercel.json` once Fluid compute is on (dashboard
   only), and Hobby's default is already its 2GB maximum.
 - `app.set('trust proxy', 1)` in `app.js` is required, not cosmetic. Vercel
