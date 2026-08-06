@@ -356,6 +356,10 @@ test('POST /api/auth/storage load attaches account to the session user', async (
   assert.equal(res.status, 200);
   assert.equal(res.body.success, true);
   assert.equal(res.body.account.scanCount, 2);
+  // The response still carries the list so the client can render immediately…
+  assert.equal(res.body.account.scans.length, 1);
+  // …but it is never persisted on the session, which must fit in a cookie.
+  assert.equal(user.account.scans, undefined);
   assert.equal(user.storage.full_name, 'sam/repo');
   assert.equal(persisted, true);
 });

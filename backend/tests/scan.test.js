@@ -131,7 +131,7 @@ test('postScan returns account snapshot when storage save succeeds', async () =>
     isAuthenticated: () => true,
     user: {
       storage: { full_name: 'sam/equalview-scans', id: 'R_kg' },
-      account: { scans: [], scanCount: 0 },
+      account: { scanCount: 0 },
     },
   };
 
@@ -153,7 +153,69 @@ test('postScan returns account snapshot when storage save succeeds', async () =>
     scans: savedScans,
   });
   assert.equal(req.user.account.scanCount, 1);
-  assert.equal(req.user.account.scans.length, 1);
+  // The list goes out over the wire but must never be persisted on the
+  // session — it grows without bound and the session must fit in a cookie.
+  assert.equal(req.user.account.scans, undefined);
+});
+
+test('getSavedScans lists the scans held in the user store', async () => {
+  const ScanController = require('../controllers/scanController');
+  const scans = [
+    { id: 'scan-2', url: 'https://example.com/b', scannedAt: '2026-07-11T12:00:00Z' },
+    { id: 'scan-1', url: 'https://example.com/a', scannedAt: '2026-07-10T12:00:00Z' },
+  ];
+
+  const ctrl = new ScanController({
+    mockScanResults,
+    scanRunner: mockScanRunner,
+    authService: { clientsFor: async () => ({ githubClient: {} }) },
+    storageService: {
+      loadAccount: async () => ({ scanCount: 2, index: { scans } }),
+    },
+  });
+
+  let body;
+  const res = {
+    json: (payload) => {
+      body = payload;
+    },
+    status() {
+      return this;
+    },
+  };
+
+  await ctrl.getSavedScans(
+    {
+      isAuthenticated: () => true,
+      user: { storage: { provider: 'github', full_name: 'sam/repo', id: 'R_kg' } },
+    },
+    res,
+  );
+
+  assert.equal(body.scanCount, 2);
+  assert.deepEqual(body.scans, scans);
+});
+
+test('getSavedScans requires auth and attached storage', async () => {
+  const ScanController = require('../controllers/scanController');
+  const ctrl = new ScanController({
+    mockScanResults,
+    scanRunner: mockScanRunner,
+    authService: {},
+    storageService: {},
+  });
+
+  let status;
+  const res = {
+    json: () => {},
+    status(code) {
+      status = code;
+      return this;
+    },
+  };
+
+  await ctrl.getSavedScans({ isAuthenticated: () => true, user: {} }, res);
+  assert.equal(status, 401);
 });
 
 test('getSavedScan returns the stored report for an authenticated user', async () => {
