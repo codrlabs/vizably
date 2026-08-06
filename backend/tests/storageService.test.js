@@ -423,6 +423,40 @@ test('createGitHubRepository skips install hop when installation covers all repo
   assert.equal(result.needsInstall, false);
 });
 
+test('createGitHubRepository finds writable install when repo is past first page', async () => {
+  const storageService = new StorageService();
+  const repos = Array.from({ length: 101 }, (_, i) =>
+    i === 100 ? 'sam/vizably-new' : `sam/other-${i}`,
+  );
+  const client = createMockGitHubClient({
+    installationProbe: [
+      {
+        id: 1,
+        contents: 'write',
+        repos,
+      },
+    ],
+  });
+  const result = await storageService.createGitHubRepository('vizably-new', {
+    githubUserClient: client,
+  });
+  assert.equal(result.needsInstall, false);
+});
+
+test('createGitHubRepository finds writable install when installation is past first page', async () => {
+  const storageService = new StorageService();
+  const installationProbe = Array.from({ length: 101 }, (_, i) => ({
+    id: i + 1,
+    contents: 'write',
+    repos: i === 100 ? ['sam/vizably-new'] : [`sam/other-${i}`],
+  }));
+  const client = createMockGitHubClient({ installationProbe });
+  const result = await storageService.createGitHubRepository('vizably-new', {
+    githubUserClient: client,
+  });
+  assert.equal(result.needsInstall, false);
+});
+
 test('createGitHubRepository surfaces rate limits instead of needsInstall', async () => {
   const storageService = new StorageService();
   const probeErr = new Error('API rate limit exceeded');
