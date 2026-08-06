@@ -7,7 +7,7 @@ const assert = require('node:assert/strict');
 const request = require('supertest');
 
 require('./helpers/testEnv');
-const buildApp = require('../app');
+const { buildApp } = require('../app');
 
 test('GET /health returns 200 with status payload', async () => {
   const app = buildApp();

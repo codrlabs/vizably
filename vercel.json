@@ -3,26 +3,23 @@
   "git": {
     "deploymentEnabled": false
   },
-  "services": {
-    "frontend": {
-      "root": "frontend/",
-      "framework": "vite",
-      "rewrites": [
-        { "source": "/(.*)", "destination": "/index.html" }
-      ]
-    },
-    "backend": {
-      "root": "backend/",
-      "framework": "express",
-      "functions": {
-        "**": {
-          "maxDuration": 60
-        }
-      }
+  "installCommand": "npm --prefix frontend install && npm --prefix backend install",
+  "buildCommand": "npm --prefix frontend run build",
+  "outputDirectory": "frontend/dist",
+  "functions": {
+    "api/**": {
+      "maxDuration": 60
     }
   },
   "rewrites": [
-    { "source": "/api/(.*)", "destination": { "service": "backend" } },
-    { "source": "/(.*)", "destination": { "service": "frontend" } }
-  ]
+    {
+      "source": "/api/(.*)",
+      "destination": "/api?__vzpath=$1"
+    },
+    {
+      "source": "/(.*)",
+      "destination": "/index.html"
+    }
+  ],
+  "framework": null
 }
