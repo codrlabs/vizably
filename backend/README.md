@@ -74,9 +74,17 @@ openssl rand -base64 32   # SESSION_SECRET and/or ENCRYPTION_KEY
 `index.js` throws on startup if either is missing. Tests inject their own values
 via `tests/helpers/testEnv.js`; never commit real secrets to the repo.
 
-**Phase 1 limitation — in-memory sessions:** `express-session` uses the default
-MemoryStore. Restarts log everyone out; multiple server instances do not share
-sessions. Switch to a persistent store (Redis, etc.) before production deploy.
+**Sessions are a signed cookie, not a server-side store.** `cookie-session`
+keeps the whole payload in a signed `httpOnly` cookie, so there is no MemoryStore
+to lose on restart and no Redis to run — which is what lets the API work on
+serverless, where every request gets a fresh, isolated instance.
+
+The tradeoff is a hard **4KB budget**. The payload is currently ~900 bytes and
+stays flat no matter how many scans an account has, because the scan list is
+fetched from the user's own store via `GET /api/scans` rather than carried on the
+session. Anything new added to the session user needs a size check —
+`tests/auth.test.js` pins the limit. Browsers drop an oversized cookie silently,
+so overflowing it looks like a random intermittent logout, not an error.
 
 Google OAuth and `GOOGLE_PICKER_API_KEY` are deferred to Phase 3 — not read by
 the server yet. Phase 5 placeholders (`JWT_SECRET`, `DATABASE_URL`) remain in
@@ -164,7 +172,50 @@ See also [`docs/guides/auth_storage_guide/githubGoogleAuthStorageImplementation.
 | POST   | `/api/auth/logout`        | end session                                    |
 | POST   | `/api/scan`               | run a live Puppeteer + axe-core scan           |
 | GET    | `/api/scan-results?url=`  | re-run a scan for a URL (used by deep links)   |
-| GET    | `/problems/:id`           | look up a single problem (legacy mock lookup)  |
+| GET    | `/api/scans`              | list saved scans from the user's store         |
+| GET    | `/api/scans/:id`          | load one saved report from the user's store    |
+| GET    | `/api/problems/:id`       | look up a single problem (legacy mock lookup)  |
+
+Every backend path lives under `/api` so one serverless function can claim the
+prefix; anything outside it is answered by the static SPA instead.
+
+## Deploying to Vercel
+
+The frontend is served as a static build and the whole Express app runs as one
+catch-all function at [`api/[...path].js`](../api/%5B...path%5D.js), configured
+by [`vercel.json`](../vercel.json). Express is exported directly — Vercel's Node
+runtime invokes the export as `(req, res)`, which is already an Express app's
+signature, so no `serverless-http` wrapper is involved.
+
+Set these in the Vercel dashboard for **Production and Preview** — never in
+`vercel.json`, which is public config and holds no values:
+
+`SESSION_SECRET`, `ENCRYPTION_KEY`, `GITHUB_APP_CLIENT_ID`,
+`GITHUB_APP_CLIENT_SECRET`, `GITHUB_APP_ID`, `GITHUB_APP_PRIVATE_KEY`,
+`GITHUB_REDIRECT_URI`, `FRONTEND_ORIGIN`.
+
+Point the GitHub App callback at
+`https://<your-domain>/api/auth/github/callback`. Preview deploys get random
+URLs that will not pass OAuth unless each is added to the App, so test auth on
+the production URL.
+
+Run it locally the way production does:
+
+```bash
+vercel dev      # from the repo root; serves the SPA and the function together
+```
+
+`vercel env pull` writes `.env.local`, which `.gitignore` already covers.
+
+Notes on the runtime, checked against the current Hobby limits:
+
+- `maxDuration` is capped at 60s deliberately; the tier allows 300s, but a
+  runaway scan should fail fast rather than burn the free budget.
+- `memory` is intentionally unset — Hobby's default is already its 2GB maximum.
+- The install command uses `--omit=dev` for the backend so `puppeteer` and its
+  bundled Chromium never land on disk. On Vercel the scanner uses
+  `puppeteer-core` with `@sparticuz/chromium`; locally and in Docker it uses the
+  full `puppeteer`, and `PUPPETEER_EXECUTABLE_PATH` overrides both.
 
 ## See also
 
