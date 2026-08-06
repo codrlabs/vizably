@@ -59,16 +59,16 @@ test('GET /api/scan-results returns the mock payload', async () => {
   assert.ok(res.body.problems);
 });
 
-test('GET /problems/:id returns the matching problem', async () => {
+test('GET /api/problems/:id returns the matching problem', async () => {
   const app = createTestApp();
-  const res = await request(app).get('/problems/contrast-1');
+  const res = await request(app).get('/api/problems/contrast-1');
   assert.equal(res.status, 200);
   assert.equal(res.body.id, 'contrast-1');
 });
 
-test('GET /problems/:id returns 404 for an unknown id', async () => {
+test('GET /api/problems/:id returns 404 for an unknown id', async () => {
   const app = createTestApp();
-  const res = await request(app).get('/problems/does-not-exist');
+  const res = await request(app).get('/api/problems/does-not-exist');
   assert.equal(res.status, 404);
 });
 

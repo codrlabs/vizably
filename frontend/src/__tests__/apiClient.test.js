@@ -199,7 +199,7 @@ describe('ApiClient', () => {
     )
     expect(fetchImpl).toHaveBeenNthCalledWith(
       3,
-      '/problems/contrast-1',
+      '/api/problems/contrast-1',
       expect.any(Object),
     )
     expect(fetchImpl).toHaveBeenNthCalledWith(

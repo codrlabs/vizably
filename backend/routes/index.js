@@ -20,7 +20,7 @@ function mountRoutes(app, { scanController, authService, storageService }) {
 
   app.use('/api/auth', makeAuthRouter({ authService, storageService }));
   app.use('/api', makeScanRouter(scanController));
-  app.use('/problems', makeProblemsRouter(scanController));
+  app.use('/api/problems', makeProblemsRouter(scanController));
 }
 
 module.exports = mountRoutes;

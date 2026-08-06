@@ -216,7 +216,7 @@ export class ApiClient {
    * @returns {Promise<Problem>}
    */
   getProblem(id) {
-    return this._request(`/problems/${encodeURIComponent(id)}`)
+    return this._request(`/api/problems/${encodeURIComponent(id)}`)
   }
 }
 
