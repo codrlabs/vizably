@@ -51,7 +51,7 @@ right architecture regardless of Vercel: the user's repo is the source of truth 
 | Piece today | On Vercel |
 |-------------|-----------|
 | `frontend/` Vite app | Static build, served from `frontend/dist` |
-| `backend/` Express app | One serverless function at `api/index.js`, fed by an `/api/(.*)` rewrite |
+| `backend/` Express app | A Vercel **service** built from `backend/`, entry `index.js` unchanged |
 | `express-session` (memory) | Stateless signed cookie session (`cookie-session`) |
 | Scan list cached in the session | Fetched from `GET /api/scans`, backed by the user's repo |
 | Puppeteer full package | `puppeteer-core` plus `@sparticuz/chromium` in the function |
@@ -139,47 +139,52 @@ rewrite is the wrong tool — it would hand Express a path it does not mount. Re
 `/api/problems`, which the route file's own comment already anticipates, and update
 `apiClient.js` and the Vite proxy.
 
-### 6. `build: add Vercel config and the serverless entry`
+### 6. `build: deploy as two Vercel services`
 
-`vercel.json` at the repo root:
+The first attempt wrapped Express in an `api/` function and used rewrites to feed it. Running
+`vercel link` rejected that outright: the CLI detects `frontend/` as Vite and `backend/` as
+Express, and top-level `functions` / `installCommand` / `buildCommand` / `outputDirectory` are
+invalid once services exist, because their owner is ambiguous.
+
+Services are the right model and delete three workarounds — no `api/` directory, no wrapper
+module, no path-restoration marker.
 
 ```json
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
-  "installCommand": "npm --prefix frontend install && PUPPETEER_SKIP_DOWNLOAD=true npm --prefix backend install",
-  "buildCommand": "npm --prefix frontend run build",
-  "outputDirectory": "frontend/dist",
-  "functions": {
-    "api/**": { "maxDuration": 60 }
+  "git": { "deploymentEnabled": false },
+  "services": {
+    "frontend": {
+      "root": "frontend/",
+      "framework": "vite",
+      "rewrites": [{ "source": "/(.*)", "destination": "/index.html" }]
+    },
+    "backend": {
+      "root": "backend/",
+      "framework": "express",
+      "functions": { "**": { "maxDuration": 60 } }
+    }
   },
   "rewrites": [
-    { "source": "/api/(.*)", "destination": "/api?__vzpath=$1" },
-    { "source": "/(.*)", "destination": "/index.html" }
+    { "source": "/api/(.*)", "destination": { "service": "backend" } },
+    { "source": "/(.*)", "destination": { "service": "frontend" } }
   ]
 }
 ```
 
-- **`installCommand` is not optional.** Without a root manifest carrying dependencies, Vercel's
-  default install leaves `backend/node_modules` empty and the function crashes on its first
-  `require`. `PUPPETEER_SKIP_DOWNLOAD=true` skips the ~170MB browser download during the build;
-  the package itself is only ~155KB and stays installed so it remains resolvable.
-- **The `functions` key is a glob.** `api/**` matches. A bracketed filename is read as a
-  character class and matches nothing, silently leaving the function on the plan default.
-- **`/api/(.*)` is required.** Vercel's `api/` directory maps file paths to URL paths with a
-  single dynamic segment, so `api/index.js` alone answers `/api` and nothing beneath it.
-  Catch-all filenames are a Next.js convention that does not apply here. The rewrite carries
-  the real path in `__vzpath` because sources disagree on whether a rewrite forwards the
-  original or rewritten path, and `vercel dev` differs from production — passing it explicitly
-  makes both cases route identically.
-- **Filesystem beats rewrites,** so real static assets are never shadowed by the SPA fallback.
+- **`backend/index.js` is untouched.** Vercel supports the `app.listen()` pattern and wraps it;
+  the build logs `Using index.js as the root entrypoint`.
+- **A service receives the original path** — `/api/auth/status` arrives as `/api/auth/status`,
+  which is why the existing mounts work unchanged. Routing into a service is final: an
+  unmatched path returns that service's 404 rather than falling through.
+- **`functions` is a glob scoped to the service.** Verified in the built output rather than
+  assumed, after a bracketed filename silently matched nothing in the earlier attempt.
+- **`PUPPETEER_SKIP_DOWNLOAD=true` lives in project settings, not `installCommand`** — the
+  `VAR=value cmd` prefix is POSIX-only and breaks `vercel build` on Windows.
+- **`git.deploymentEnabled: false`** so GitHub Actions is the only thing that can deploy.
 
-`api/index.js` exports the Express app and restores the path before routing. No
-`serverless-http`: Vercel's Node runtime invokes the export as `(req, res)`, which is already
-an Express app's signature — verified locally against the built handler.
-
-Also add `.vercel` to `.gitignore` here. A root `package.json` declaring only `engines.node`
-pins the runtime, since `@sparticuz/chromium` requires Node >= 22.17; `frontend/` and
-`backend/` stay separate packages with their own lockfiles.
+`engines.node` moves to `backend/package.json`, since each service builds from its own root and
+`@sparticuz/chromium` requires Node >= 22.17.
 
 ### 7. `docs: document the Vercel deployment`
 

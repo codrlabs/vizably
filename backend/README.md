@@ -181,28 +181,25 @@ prefix; anything outside it is answered by the static SPA instead.
 
 ## Deploying to Vercel
 
-The frontend is served as a static build and the whole Express app runs as one
-function at [`api/index.js`](../api/index.js), configured by
-[`vercel.json`](../vercel.json). Express is exported directly — Vercel's Node
-runtime invokes the export as `(req, res)`, which is already an Express app's
-signature, so no `serverless-http` wrapper is involved.
+The repo deploys as **one Vercel project containing two services** — Vercel's
+native model for a frontend and a backend in the same repository. It detects
+both automatically: `frontend/` as Vite, `backend/` as Express.
 
-Routing is done by two rewrites, in order: `/api/(.*)` sends every nested API
-path to the function, then `/(.*)` falls back to `index.html` for the SPA.
-Vercel checks the filesystem before rewrites, so real static assets always win.
-The first rewrite is required — Vercel's `api/` directory maps file paths to URL
-paths and supports only a single dynamic segment, so `api/index.js` alone would
-answer `/api` and nothing beneath it. Catch-all filenames (`[...path].js`) are a
-Next.js convention and do not apply to a plain `api/` directory.
+```
+request -> filesystem (real static assets win)
+        -> /api/*  -> backend service   (backend/index.js, unchanged)
+        -> /*      -> frontend service  (frontend/dist, SPA fallback)
+```
 
-That rewrite carries the real path in a `__vzpath` query marker, and the entry
-puts it back before Express routes. This is deliberate: reports disagree on
-whether a rewrite forwards the original path or the rewritten one, and
-`vercel dev` is known to behave differently from production. Rather than depend
-on which is true, the path is passed explicitly, so preserved and flattened
-requests route identically. The marker is stripped before any handler runs, is
-only honoured on a request actually flattened onto `/api`, and is covered by
-`tests/apiEntry.test.js`.
+`backend/index.js` needs no changes. Vercel supports the `app.listen()` pattern
+and wraps it, reporting `Using index.js as the root entrypoint` at build time.
+There is no `api/` directory, no wrapper module, and no `serverless-http`.
+
+**A service receives the original path.** `GET /api/auth/status` arrives at
+Express as `/api/auth/status`, not `/auth/status`, so the existing route mounts
+work as they do locally. Routing into a service is also final: if nothing
+inside matches, Vercel returns that service's 404 rather than falling through
+to the other service.
 
 Set these in the Vercel dashboard for **Production and Preview** — never in
 `vercel.json`, which is public config and holds no values:
@@ -216,42 +213,60 @@ Point the GitHub App callback at
 URLs that will not pass OAuth unless each is added to the App, so test auth on
 the production URL.
 
+`PUPPETEER_SKIP_DOWNLOAD=true` is set there too. It skips the ~170MB browser
+download during the build. It is not a secret and not needed for correctness —
+it lives in project settings rather than in `installCommand` because the
+`VAR=value cmd` prefix is POSIX-only and breaks `vercel build` on Windows.
+
+### Deploys are gated on tests
+
+`git.deploymentEnabled` is `false`, so Vercel never deploys on its own. The
+only route to production is [`deploy.yml`](../.github/workflows/deploy.yml),
+which runs the full suite and only then does `vercel pull` / `build` /
+`deploy --prebuilt`. Without that flag both Vercel and the workflow would
+deploy the same commit and the ungated one could land first.
+
 Run it locally the way production does:
 
 ```bash
-vercel dev      # from the repo root; serves the SPA and the function together
+vercel build    # builds both services exactly as the platform would
+vercel dev      # serves them together
 ```
 
 `vercel env pull` writes `.env.local`, which `.gitignore` already covers.
 
-Notes on the runtime, checked against the current Hobby limits:
+### Verified against a real build
 
-- `maxDuration` is capped at 60s deliberately; the tier allows 300s, but a
-  runaway scan should fail fast rather than burn the free budget. The
-  `functions` key is a **glob**, so it must be `api/**` — `api/index.js` is
-  fine too, but a bracketed filename would be read as a character class and
-  silently match nothing, leaving the function on the plan default.
-- `memory` is intentionally unset — it cannot be set in `vercel.json` at all
-  once Fluid compute is on (dashboard only), and Hobby's default is already its
-  2GB maximum.
+Confirmed by inspecting `.vercel/output`, not assumed:
+
+- Output is `services/backend/functions/index.func` plus
+  `services/frontend/static`. A CLI warning about "no functions or static
+  directory" is a false alarm in services mode.
+- `maxDuration: 60` reaches the built function config. The `functions` key is a
+  **glob scoped to the service** — an earlier bracketed filename matched
+  nothing and silently left the function on the plan default of 300s.
+- Runtime resolves to `nodejs24.x` from `engines.node` in
+  `backend/package.json`. `@sparticuz/chromium` requires **Node ≥ 22.17**, so
+  this matters; `frontend/` and `backend/` stay separate packages with their
+  own lockfiles.
+- `memory` cannot be set in `vercel.json` once Fluid compute is on (dashboard
+  only), and Hobby's default is already its 2GB maximum.
 - `app.set('trust proxy', 1)` in `app.js` is required, not cosmetic. Vercel
   terminates TLS at the edge and forwards plain http; without it `req.protocol`
   stays `http`, and the cookie layer throws rather than send a `Secure` cookie,
   breaking every authenticated request in production while passing locally.
-- The install sets `PUPPETEER_SKIP_DOWNLOAD=true` for the backend. The package
-  itself is only ~155 KB — the browser lives in `~/.cache/puppeteer`, outside
-  the traced tree — so it is the *download*, not the bundle, that is worth
-  avoiding. Measured bundle weight is `puppeteer-core` (13 MB) plus
-  `@sparticuz/chromium` (66 MB), comfortably inside the 250 MB limit.
+- `app.set('trust proxy', 1)` in `app.js` is required, not cosmetic. Vercel
+  terminates TLS at the edge and forwards plain http; without it `req.protocol`
+  stays `http` and the cookie layer throws rather than send a `Secure` cookie,
+  breaking every authenticated request in production while passing locally.
 - The scanner picks its browser by **probing, not by platform flag**. It uses
   the full `puppeteer` when `executablePath()` points at a binary that exists —
   true for local dev and for Docker via `PUPPETEER_EXECUTABLE_PATH` — and falls
   back to `puppeteer-core` with `@sparticuz/chromium` otherwise. Keying off
   `VERCEL` would break silently if a project ever disabled system environment
-  variables.
-- **Node must be ≥ 22.17** (`@sparticuz/chromium`'s own `engines`). The root
-  `package.json` pins `24.x`; it declares nothing else, and `frontend/` and
-  `backend/` remain separate packages with their own lockfiles.
+  variables. Measured weight is 13 MB + 66 MB against a 250 MB limit;
+  `node_modules/puppeteer` is only ~155 KB, because the browser lives in
+  `~/.cache/puppeteer`, outside the traced tree.
 
 ### Security notes
 
