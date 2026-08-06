@@ -1,6 +1,6 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
-  "installCommand": "npm --prefix frontend install && npm --prefix backend install --omit=dev",
+  "installCommand": "npm --prefix frontend install && PUPPETEER_SKIP_DOWNLOAD=true npm --prefix backend install",
   "buildCommand": "npm --prefix frontend run build",
   "outputDirectory": "frontend/dist",
   "functions": {
@@ -9,7 +9,7 @@
     }
   },
   "rewrites": [
-    { "source": "/api/(.*)", "destination": "/api" },
+    { "source": "/api/(.*)", "destination": "/api?__vzpath=$1" },
     { "source": "/(.*)", "destination": "/index.html" }
   ]
 }

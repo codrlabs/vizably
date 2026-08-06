@@ -24,4 +24,38 @@ if (!process.env.ENCRYPTION_KEY) {
 }
 
 // Built once at module scope so warm invocations reuse it.
-module.exports = buildApp();
+const app = buildApp();
+
+/** Query key the vercel.json rewrite uses to carry the real path through. */
+const PATH_PARAM = '__vzpath';
+
+/**
+ * Restore the pre-rewrite request path.
+ *
+ * Express routes on `req.url`, so it has to see `/api/auth/status` rather than
+ * the rewrite destination. Reports differ on whether Vercel forwards the
+ * original path or the rewritten one, and `vercel dev` is known to differ from
+ * production here — so rather than depend on that, the rewrite carries the
+ * path explicitly and this puts it back. Both behaviours end up identical, and
+ * the marker is stripped so handlers never see it.
+ *
+ * @param {string} url raw `req.url`
+ * @returns {string} the URL Express should route on
+ */
+function restorePath(url) {
+  const parsed = new URL(url, 'http://localhost');
+  const carried = parsed.searchParams.get(PATH_PARAM);
+
+  if (carried === null) {
+    return url; // No rewrite marker: nothing to undo.
+  }
+
+  parsed.searchParams.delete(PATH_PARAM);
+  const query = parsed.searchParams.toString();
+  return `/api/${carried}${query ? `?${query}` : ''}`;
+}
+
+module.exports = (req, res) => {
+  req.url = restorePath(req.url);
+  return app(req, res);
+};

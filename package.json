@@ -1,0 +1,8 @@
+{
+  "name": "vizably",
+  "private": true,
+  "description": "Root manifest. Declares nothing but the Node version — frontend/ and backend/ stay separate packages with their own lockfiles.",
+  "engines": {
+    "node": "24.x"
+  }
+}

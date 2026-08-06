@@ -13,17 +13,36 @@
  * Constructor deps are injectable for unit tests (no real Chromium in CI).
  */
 
+const fs = require('node:fs');
+
 const defaultValidate = require('./ssrfGuard').validate;
 const { transform: defaultTransform } = require('./axeTransformer');
 const defaultAxe = require('axe-core');
 
 /**
+ * Does the full `puppeteer` package have a browser binary it can actually run?
+ *
+ * `executablePath()` honours PUPPETEER_EXECUTABLE_PATH, so this is true for the
+ * Docker image (system Chromium from apk) and for local dev (the download in
+ * ~/.cache/puppeteer). It is false on a serverless build, where the download is
+ * skipped, and it throws when no browser is configured at all.
+ */
+function hasLocalBrowser(puppeteer) {
+  try {
+    return fs.existsSync(puppeteer.executablePath());
+  } catch {
+    return false;
+  }
+}
+
+/**
  * Resolve the browser driver at call time rather than module load time.
  *
- * `puppeteer` ships its own Chromium download, which is far too large for a
- * serverless bundle, so on Vercel we use `puppeteer-core` against the
- * Brotli-compressed binary from `@sparticuz/chromium` instead. Requiring
- * lazily keeps the heavy package off the import path where it is not wanted.
+ * The choice is made from what is actually present, not from a platform flag:
+ * Vercel's `VERCEL` variable only exists when "system environment variables"
+ * are enabled for the project, so keying off it would fail silently if that
+ * box were ever unchecked. Probing for a usable binary instead is true in
+ * every environment by construction.
  *
  * @param {object} [injected] browser driver supplied by a caller or a test
  * @returns {Promise<{ puppeteer: object, chromium: object | null }>}
@@ -32,15 +51,23 @@ async function resolveBrowser(injected) {
   if (injected) {
     return { puppeteer: injected, chromium: null };
   }
-  if (process.env.VERCEL) {
-    return {
-      puppeteer: require('puppeteer-core'),
-      chromium: require('@sparticuz/chromium'),
-    };
+
+  let local = null;
+  try {
+    local = require('puppeteer');
+  } catch {
+    // Not installed at all — a production install that omitted devDependencies.
   }
-  // Local dev and Docker, where the Dockerfile points PUPPETEER_EXECUTABLE_PATH
-  // at the system Chromium installed via apk.
-  return { puppeteer: require('puppeteer'), chromium: null };
+  if (local && hasLocalBrowser(local)) {
+    return { puppeteer: local, chromium: null };
+  }
+
+  // Serverless: no downloaded browser, so drive the Brotli-compressed build
+  // that @sparticuz/chromium unpacks into /tmp.
+  return {
+    puppeteer: require('puppeteer-core'),
+    chromium: require('@sparticuz/chromium'),
+  };
 }
 
 class ScanRunner {
