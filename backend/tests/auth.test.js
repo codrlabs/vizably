@@ -121,6 +121,46 @@ test('session survives a fresh app instance because the cookie is the store', as
   assert.equal(read.body.marker, 'kept');
 });
 
+test('a failed OAuth token exchange redirects and logs the provider reason', async () => {
+  const express = require('express');
+  const makeAuthRouter = require('../routes/auth');
+
+  // What passport-oauth2 actually throws when GitHub rejects the exchange:
+  // a generic message, with the useful part buried on `oauthError`.
+  const oauthFailure = Object.assign(new Error('Failed to obtain access token'), {
+    oauthError: { data: '{"error":"incorrect_client_credentials"}' },
+  });
+
+  const app = express();
+  app.use(
+    '/api/auth',
+    makeAuthRouter({
+      authService: { authenticateGitHub: () => (_req, _res, next) => next(oauthFailure) },
+      storageService: {},
+    }),
+  );
+
+  const logged = [];
+  const originalError = console.error;
+  console.error = (...args) => logged.push(args.join(' '));
+
+  try {
+    const res = await request(app).get('/api/auth/github/callback');
+
+    // Not a 500 with a stack trace — the user lands back on Connect.
+    assert.equal(res.status, 302);
+    assert.match(res.headers.location, /error=auth_failed/);
+  } finally {
+    console.error = originalError;
+  }
+
+  // And the reason we could not see before is now in the logs.
+  assert.ok(
+    logged.some((line) => line.includes('incorrect_client_credentials')),
+    `expected the provider reason to be logged, got: ${JSON.stringify(logged)}`,
+  );
+});
+
 test('a Secure cookie is set behind a TLS-terminating proxy', async () => {
   // Vercel terminates TLS at the edge and forwards plain http with
   // X-Forwarded-Proto: https. Without `trust proxy` the cookie layer throws
