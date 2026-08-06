@@ -141,16 +141,46 @@ integration**, your app installation likely still has **Contents: Read** only:
 3. Confirm `vizably-scans` (or your target repo) is checked under repository access
 4. Sign out of Vizably and sign in again (fresh OAuth token)
 
-**Production (TBD — finalize before shipping Vizably)**
+**Production**
 
-The personal apps above are for **testing only**. Before Vizably runs on a
-real domain, the team must register a **project-owned GitHub App** (under the
-codrlabs/vizably org or equivalent) with:
+The personal apps above are for **local testing only**. Production uses a
+separate, org-owned GitHub App registered under **codrlabs**, so the team owns
+it rather than an individual.
 
-- Production callback URL(s) on the deployed backend (e.g.
-  `https://api.vizably.example/api/auth/github/callback`)
-- The same permission model (`Contents: rw`, `Metadata: r`, `Administration: rw`)
-- Client ID/secret stored in deployment secrets — **never** committed to git
+| Setting | Value |
+|---|---|
+| Callback URL | `https://vizably.vercel.app/api/auth/github/callback` |
+| Homepage URL | `https://vizably.vercel.app` |
+| Permissions | `Contents: rw`, `Metadata: r`, `Administration: rw` |
+| Where can this app be installed? | **Any account** |
+| Expire user authorization tokens | **Off** |
+| Webhook | **Inactive** |
+
+Three of those are easy to get wrong, and each fails in a way that does not
+point at itself:
+
+- **"Any account"**, not "Only on this account". Vizably's whole model is users
+  connecting storage they own, so restricting installation to the org locks out
+  every external user. It only surfaces when someone outside codrlabs tries.
+- **Token expiry off.** GitHub defaults it *on*, which issues 8-hour user tokens
+  plus a `refresh_token`. Vizably discards the refresh token — see the
+  `_refreshToken` parameter in `authService.registerStrategies` — so expiring
+  tokens would break every signed-in user's storage roughly 8 hours after
+  sign-in, with no error naming the cause.
+- **Webhook inactive.** There is no webhook endpoint, and GitHub makes the
+  webhook URL a required field while it is active.
+
+Credentials live in Vercel project settings (Production), never in git:
+`GITHUB_APP_CLIENT_ID`, `GITHUB_APP_CLIENT_SECRET`, `GITHUB_APP_ID`,
+`GITHUB_APP_PRIVATE_KEY`, `GITHUB_REDIRECT_URI`.
+
+The private key is the App proving it is *itself*, which is separate from a user
+authorizing it: the OAuth client credentials produce a user token, while the key
+signs the RS256 JWT that is exchanged for the **installation token** used to
+write scan files. A user token alone cannot write Contents. GitHub shows the PEM
+once, so keep a copy in the team password manager; an App can hold several keys,
+so a lost or leaked one is replaced by generating a new key and deleting the old,
+without touching the Client ID.
 
 See also [`docs/guides/auth_storage_guide/githubGoogleAuthStorageImplementation.md`](../docs/guides/auth_storage_guide/githubGoogleAuthStorageImplementation.md) § OAuth App Configuration.
 
