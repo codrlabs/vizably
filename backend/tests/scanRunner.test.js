@@ -10,6 +10,7 @@ function createMockPuppeteer({ evaluateResult, evaluateError } = {}) {
   const page = {
     setBypassCSP: async () => {},
     goto: async () => {},
+    waitForNetworkIdle: async () => {},
     addScriptTag: async () => {},
     evaluate: async () => {
       if (evaluateError) throw evaluateError;
@@ -82,7 +83,7 @@ test('run navigates, injects axe, transforms, and closes the browser', async () 
   assert.deepEqual(calls.find((c) => Array.isArray(c) && c[0] === 'goto'), [
     'goto',
     'https://example.com',
-    'networkidle0',
+    'domcontentloaded',
   ]);
   assert.deepEqual(calls.find((c) => Array.isArray(c) && c[0] === 'script'), [
     'script',

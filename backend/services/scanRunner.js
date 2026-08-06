@@ -50,13 +50,17 @@ class ScanRunner {
       executablePath: process.env.PUPPETEER_EXECUTABLE_PATH || undefined,
       args: ['--no-sandbox', '--disable-setuid-sandbox'],
     });
-    const page = await browser.newPage();
-    // Many sites ship a strict CSP that blocks inline script injection;
-    // bypassing CSP for this page lets us inject axe-core reliably.
-    await page.setBypassCSP(true);
-    await page.goto(url, { waitUntil: 'networkidle0' });
-
     try {
+      const page = await browser.newPage();
+      // Many sites ship a strict CSP that blocks inline script injection;
+      // bypassing CSP for this page lets us inject axe-core reliably.
+      await page.setBypassCSP(true);
+      // Wait for the DOM to be ready, not for the network to go quiet. Busy
+      // sites (Stripe, Facebook) never reach networkidle0, so it would time out.
+      // The short, ignored idle wait lets late content settle without hanging.
+      await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 30000 });
+      await page.waitForNetworkIdle({ idleTime: 500, timeout: 5000 }).catch(() => {});
+
       await page.addScriptTag({ content: this.axe.source });
       const axeResults = await page.evaluate(() => {
         return new Promise((resolve) => {
