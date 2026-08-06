@@ -76,16 +76,18 @@ function createMockGitHubClient(initial = {}) {
         }),
       },
       repos: {
-        listForAuthenticatedUser: async () => ({
-          data: [
+        listForAuthenticatedUser: async ({ page = 1, per_page = 100 } = {}) => {
+          const all = initial.listedRepos ?? [
             {
               node_id: STORAGE_REF.id,
               full_name: STORAGE_REF.full_name,
               private: true,
               html_url: STORAGE_REF.html_url,
             },
-          ],
-        }),
+          ];
+          const start = (page - 1) * per_page;
+          return { data: all.slice(start, start + per_page) };
+        },
         get: async (args) => {
           if (typeof initial.repoGet === 'function') {
             return initial.repoGet(args);
@@ -294,6 +296,22 @@ test('listGitHubRepos maps node id and repo metadata', async () => {
   assert.equal(repos.length, 1);
   assert.equal(repos[0].id, STORAGE_REF.id);
   assert.equal(repos[0].full_name, STORAGE_REF.full_name);
+});
+
+test('listGitHubRepos paginates beyond the first 100 repos', async () => {
+  const storageService = new StorageService();
+  const listedRepos = Array.from({ length: 105 }, (_, i) => ({
+    node_id: `R_${i}`,
+    full_name: `sam/repo-${i}`,
+    private: true,
+    html_url: `https://github.com/sam/repo-${i}`,
+  }));
+  const client = createMockGitHubClient({ listedRepos });
+  const repos = await storageService.listGitHubRepos(client);
+  assert.equal(repos.length, 105);
+  assert.equal(repos[0].full_name, 'sam/repo-0');
+  assert.equal(repos[104].full_name, 'sam/repo-104');
+  assert.equal(repos[104].id, 'R_104');
 });
 
 test('checkGitHubRepoNameAvailability returns available on 404', async () => {

@@ -8,6 +8,7 @@
 const crypto = require('crypto');
 const { randomUUID } = require('crypto');
 const { normalizeGitHubRepoName } = require('../../shared/githubRepoName');
+const { collectAllGitHubPages } = require('./githubPagination');
 
 const MANIFEST_PATH = 'vizably.json';
 /** Pre-rename store root — still loadable; rewritten to `MANIFEST_PATH` on load. */
@@ -41,11 +42,15 @@ class StorageService {
    * @returns {Promise<Array<{ id: string, full_name: string, private: boolean, html_url: string }>>}
    */
   async listGitHubRepos(githubClient) {
-    const { data } = await githubClient.rest.repos.listForAuthenticatedUser({
-      visibility: 'all',
-      affiliation: 'owner,collaborator,organization_member',
-      per_page: 100,
-      sort: 'updated',
+    const data = await collectAllGitHubPages(async (page, perPage) => {
+      const { data: pageData } = await githubClient.rest.repos.listForAuthenticatedUser({
+        visibility: 'all',
+        affiliation: 'owner,collaborator,organization_member',
+        per_page: perPage,
+        page,
+        sort: 'updated',
+      });
+      return pageData;
     });
 
     return data.map((repo) => ({
