@@ -8,7 +8,7 @@
 const crypto = require('crypto');
 const { randomUUID } = require('crypto');
 const { normalizeGitHubRepoName } = require('../../shared/githubRepoName');
-const { collectAllGitHubPages } = require('./githubPagination');
+const { collectAllGitHubPages, findInGitHubPages } = require('./githubPagination');
 
 const MANIFEST_PATH = 'vizably.json';
 /** Pre-rename store root — still loadable; rewritten to `MANIFEST_PATH` on load. */
@@ -228,16 +228,20 @@ class StorageService {
    */
   async _isRepoOnWritableInstallation(octokit, owner, repo) {
     const fullName = `${owner}/${repo}`;
-    let data;
+    let installations;
     try {
-      ({ data } = await octokit.rest.apps.listInstallationsForAuthenticatedUser({
-        per_page: 100,
-      }));
+      installations = await collectAllGitHubPages(async (page, perPage) => {
+        const { data } = await octokit.rest.apps.listInstallationsForAuthenticatedUser({
+          per_page: perPage,
+          page,
+        });
+        return data.installations ?? [];
+      });
     } catch (err) {
       throw this._formatGitHubInstallationProbeError(err);
     }
 
-    for (const installation of data.installations ?? []) {
+    for (const installation of installations) {
       if (installation.permissions?.contents !== 'write') {
         continue;
       }
@@ -245,18 +249,25 @@ class StorageService {
         return true;
       }
 
-      let reposData;
+      let matched;
       try {
-        ({ data: reposData } =
-          await octokit.rest.apps.listInstallationReposForAuthenticatedUser({
-            installation_id: installation.id,
-            per_page: 100,
-          }));
+        matched = await findInGitHubPages(
+          async (page, perPage) => {
+            const { data: reposData } =
+              await octokit.rest.apps.listInstallationReposForAuthenticatedUser({
+                installation_id: installation.id,
+                per_page: perPage,
+                page,
+              });
+            return reposData.repositories ?? [];
+          },
+          (entry) => entry.full_name === fullName,
+        );
       } catch (err) {
         throw this._formatGitHubInstallationProbeError(err);
       }
 
-      if (reposData.repositories?.some((r) => r.full_name === fullName)) {
+      if (matched) {
         return true;
       }
     }
@@ -1050,24 +1061,33 @@ class StorageService {
     let canWrite = false;
 
     try {
-      const { data } = await octokit.rest.apps.listInstallationsForAuthenticatedUser({
-        per_page: 100,
+      const installations = await collectAllGitHubPages(async (page, perPage) => {
+        const { data } = await octokit.rest.apps.listInstallationsForAuthenticatedUser({
+          per_page: perPage,
+          page,
+        });
+        return data.installations ?? [];
       });
 
-      for (const installation of data.installations ?? []) {
+      for (const installation of installations) {
         const contents = installation.permissions?.contents;
         if (!contents || contents === 'none') {
           continue;
         }
 
-        const { data: reposData } =
-          await octokit.rest.apps.listInstallationReposForAuthenticatedUser({
-            installation_id: installation.id,
-            per_page: 100,
-          });
-
-        const included = reposData.repositories?.some((r) => r.full_name === fullName);
-        if (!included) {
+        const matched = await findInGitHubPages(
+          async (page, perPage) => {
+            const { data: reposData } =
+              await octokit.rest.apps.listInstallationReposForAuthenticatedUser({
+                installation_id: installation.id,
+                per_page: perPage,
+                page,
+              });
+            return reposData.repositories ?? [];
+          },
+          (entry) => entry.full_name === fullName,
+        );
+        if (!matched) {
           continue;
         }
 

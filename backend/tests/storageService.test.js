@@ -258,28 +258,36 @@ function createMockGitHubClient(initial = {}) {
       },
       apps: installationProbe || initial.installationProbeError
         ? {
-            listInstallationsForAuthenticatedUser: async () => {
+            listInstallationsForAuthenticatedUser: async ({ page = 1, per_page = 100 } = {}) => {
               if (initial.installationProbeError) {
                 throw initial.installationProbeError;
               }
+              const all = (installationProbe ?? []).map((entry) => ({
+                id: entry.id,
+                permissions: { contents: entry.contents },
+                repository_selection: entry.repository_selection || 'selected',
+              }));
+              const start = (page - 1) * per_page;
               return {
                 data: {
-                  installations: (installationProbe ?? []).map((entry) => ({
-                    id: entry.id,
-                    permissions: { contents: entry.contents },
-                    repository_selection: entry.repository_selection || 'selected',
-                  })),
+                  installations: all.slice(start, start + per_page),
                 },
               };
             },
-            listInstallationReposForAuthenticatedUser: async ({ installation_id }) => {
+            listInstallationReposForAuthenticatedUser: async ({
+              installation_id,
+              page = 1,
+              per_page = 100,
+            }) => {
               if (initial.installationReposError) {
                 throw initial.installationReposError;
               }
               const entry = (installationProbe ?? []).find((item) => item.id === installation_id);
+              const all = (entry?.repos ?? []).map((full_name) => ({ full_name }));
+              const start = (page - 1) * per_page;
               return {
                 data: {
-                  repositories: (entry?.repos ?? []).map((full_name) => ({ full_name })),
+                  repositories: all.slice(start, start + per_page),
                 },
               };
             },
