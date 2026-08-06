@@ -40,10 +40,37 @@ test('middleware returns session + passport handlers', () => {
   });
 
   const stack = authService.middleware();
-  assert.equal(stack.length, 3);
-  assert.equal(typeof stack[0], 'function');
-  assert.equal(typeof stack[1], 'function');
-  assert.equal(typeof stack[2], 'function');
+  assert.ok(stack.length >= 3);
+  for (const handler of stack) {
+    assert.equal(typeof handler, 'function');
+  }
+});
+
+test('middleware shims regenerate/save so passport works on cookie-session', () => {
+  const authService = new AuthService({
+    sessionSecret: TEST_SESSION_SECRET,
+    encryptionKey: TEST_ENCRYPTION_KEY,
+  });
+
+  // cookie-session provides neither method; passport calls both. Without the
+  // shim, req.login() throws and every OAuth callback 500s.
+  const req = { session: {} };
+  const shim = authService.middleware()[1];
+
+  let nexted = false;
+  shim(req, {}, () => {
+    nexted = true;
+  });
+
+  assert.equal(nexted, true);
+  assert.equal(typeof req.session.regenerate, 'function');
+  assert.equal(typeof req.session.save, 'function');
+
+  let regenerated = false;
+  req.session.regenerate(() => {
+    regenerated = true;
+  });
+  assert.equal(regenerated, true);
 });
 
 test('getGitHubClient returns authenticated Octokit', () => {

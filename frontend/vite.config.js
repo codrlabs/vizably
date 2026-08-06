@@ -12,14 +12,11 @@ export default defineConfig({
   plugins: [react()],
   server: {
     proxy: {
+      // Everything the backend serves lives under /api, including problems.
       '/api': {
         target: backendUrl,
         changeOrigin: true,
       },
-      '/problems': {
-        target: backendUrl,
-        changeOrigin: true,
-      }
     }
   },
   test: {

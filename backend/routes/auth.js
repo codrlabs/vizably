@@ -195,11 +195,13 @@ function makeAuthRouter({ authService, storageService }) {
       }
 
       req.user.storage = account.storageRef;
+      // Deliberately without `scans`: the list grows with every scan and the
+      // session has to fit in a cookie. The client fetches it from
+      // GET /api/scans, which reads index.json from the user's own store.
       req.user.account = {
         accountId: account.accountId,
         settings: account.settings,
         scanCount: account.scanCount,
-        scans: account.index?.scans ?? [],
       };
 
       await authService.persistUser(req);
@@ -208,7 +210,7 @@ function makeAuthRouter({ authService, storageService }) {
         success: true,
         provider: account.provider,
         storage: account.storageRef,
-        account: req.user.account,
+        account: { ...req.user.account, scans: account.index?.scans ?? [] },
       });
     } catch (err) {
       console.error(err);
@@ -235,13 +237,10 @@ function makeAuthRouter({ authService, storageService }) {
       if (err) {
         return next(err);
       }
-      req.session.destroy((destroyErr) => {
-        if (destroyErr) {
-          return next(destroyErr);
-        }
-        res.clearCookie('vizably.sid');
-        return res.json({ success: true });
-      });
+      // cookie-session has no destroy(): nulling the session is what clears
+      // the cookie, since the cookie is the whole store.
+      req.session = null;
+      return res.json({ success: true });
     });
   });
 

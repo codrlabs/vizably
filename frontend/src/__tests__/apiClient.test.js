@@ -199,7 +199,7 @@ describe('ApiClient', () => {
     )
     expect(fetchImpl).toHaveBeenNthCalledWith(
       3,
-      '/problems/contrast-1',
+      '/api/problems/contrast-1',
       expect.any(Object),
     )
     expect(fetchImpl).toHaveBeenNthCalledWith(
@@ -207,5 +207,20 @@ describe('ApiClient', () => {
       '/api/scans/scan-1',
       expect.any(Object),
     )
+  })
+
+  it('lists saved scans from the user store', async () => {
+    const fetchImpl = vi.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: async () => ({ scanCount: 2, scans: [{ id: 'scan-1' }, { id: 'scan-2' }] }),
+    })
+
+    const client = new ApiClient({ fetchImpl })
+    const result = await client.listScans()
+
+    expect(fetchImpl).toHaveBeenCalledWith('/api/scans', expect.any(Object))
+    expect(result.scanCount).toBe(2)
+    expect(result.scans).toHaveLength(2)
   })
 })

@@ -2,6 +2,7 @@
  * Scan-related routes:
  *   - POST /api/scan
  *   - GET  /api/scan-results
+ *   - GET  /api/scans
  *   - GET  /api/scans/:id
  *
  * Only knows about HTTP shape. All logic lives in ScanController.
@@ -18,6 +19,7 @@ function makeScanRouter(controller) {
   const router = Router();
   router.post('/scan', controller.postScan);
   router.get('/scan-results', controller.getScanResults);
+  router.get('/scans', controller.getSavedScans);
   router.get('/scans/:id', controller.getSavedScan);
   return router;
 }
