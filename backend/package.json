@@ -14,16 +14,15 @@
   "dependencies": {
     "@octokit/rest": "^22.0.1",
     "axe-core": "^4.10.2",
+    "cookie-session": "^2.1.1",
     "cors": "^2.8.6",
     "dotenv": "^17.4.2",
     "express": "^5.2.1",
-    "express-session": "^1.19.0",
     "passport": "^0.7.0",
     "passport-github2": "^0.1.12",
     "puppeteer": "^24.3.0"
   },
   "devDependencies": {
-    "@types/express-session": "^1.19.0",
     "@types/passport": "^1.0.17",
     "@types/passport-github2": "^1.2.9",
     "nodemon": "^3.1.14",

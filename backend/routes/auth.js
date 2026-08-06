@@ -237,13 +237,10 @@ function makeAuthRouter({ authService, storageService }) {
       if (err) {
         return next(err);
       }
-      req.session.destroy((destroyErr) => {
-        if (destroyErr) {
-          return next(destroyErr);
-        }
-        res.clearCookie('vizably.sid');
-        return res.json({ success: true });
-      });
+      // cookie-session has no destroy(): nulling the session is what clears
+      // the cookie, since the cookie is the whole store.
+      req.session = null;
+      return res.json({ success: true });
     });
   });
 
