@@ -6,10 +6,9 @@ const BMC = 'https://ko-fi.com/devolabode'
 
 /** Top app bar with logo + nav, global footer. Donate lives in the footer. */
 export default function AppShell({ children, route, onNav, authed, user, theme, onToggleTheme }) {
-  // Primary “New scan” in the header whenever signed in, except on landing
-  // (already the scan entry) and auth/connect setup screens.
-  const showNewScan =
-    authed && route !== 'landing' && route !== 'signin' && route !== 'connect'
+  // Keep New scan in the same slot whenever signed in so header order does not
+  // jump between routes (landing used to omit it and look reordered).
+  const showNewScan = authed && route !== 'signin' && route !== 'connect'
 
   const NavLink = ({ to, children }) => (
     <button onClick={() => onNav(to)} style={{
