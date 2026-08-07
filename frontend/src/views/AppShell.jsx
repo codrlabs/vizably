@@ -6,7 +6,10 @@ const BMC = 'https://ko-fi.com/devolabode'
 
 /** Top app bar with logo + nav, global footer. Donate lives in the footer. */
 export default function AppShell({ children, route, onNav, authed, user, theme, onToggleTheme }) {
-  const inApp = route === 'results' || route === 'problem'
+  // Primary “New scan” in the header whenever signed in, except on landing
+  // (already the scan entry) and auth/connect setup screens.
+  const showNewScan =
+    authed && route !== 'landing' && route !== 'signin' && route !== 'connect'
 
   const NavLink = ({ to, children }) => (
     <button onClick={() => onNav(to)} style={{
@@ -45,26 +48,26 @@ export default function AppShell({ children, route, onNav, authed, user, theme, 
         <button onClick={() => onNav('landing')} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 0 }} aria-label="Vizably home">
           <Logo size={28} />
         </button>
-        <nav style={{ display: 'flex', alignItems: 'center', gap: 20 }}>
+        <nav aria-label="Primary" style={{ display: 'flex', alignItems: 'center', gap: 20 }}>
           <button onClick={onToggleTheme} aria-label={theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'} title={theme === 'dark' ? 'Light mode' : 'Dark mode'} style={{
             width: 34, height: 34, borderRadius: '50%', display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
             border: '1px solid var(--border-default)', background: 'var(--surface-card)', color: 'var(--text-body)', cursor: 'pointer',
           }}>{Ico(theme === 'dark' ? 'Sun' : 'Moon', 17, 'currentColor')}</button>
-          {inApp && (
+          {showNewScan && (
             <Button size="sm" variant="secondary" onClick={() => onNav('landing')} iconLeft={Ico('Plus', 16)}>New scan</Button>
           )}
           {authed ? (
-            <>
-              <NavLink to="dashboard">My scans</NavLink>
-              <button onClick={() => onNav('account')} aria-label="Account settings" style={{
-                width: 34, height: 34, borderRadius: '50%',
-                border: route === 'account' ? '2px solid var(--accent)' : '1px solid var(--border-default)',
-                background: 'var(--accent-subtle)', color: 'var(--accent)', cursor: 'pointer',
-                font: 'var(--font-sans)', fontWeight: 'var(--weight-bold)', fontSize: 'var(--text-sm)',
-              }}>{initials}</button>
-            </>
+            <NavLink to="dashboard">My scans</NavLink>
           ) : (
             <NavLink to="signin">Sign in</NavLink>
+          )}
+          {authed && (
+            <button onClick={() => onNav('account')} aria-label="Account settings" style={{
+              width: 34, height: 34, borderRadius: '50%',
+              border: route === 'account' ? '2px solid var(--accent)' : '1px solid var(--border-default)',
+              background: 'var(--accent-subtle)', color: 'var(--accent)', cursor: 'pointer',
+              font: 'var(--font-sans)', fontWeight: 'var(--weight-bold)', fontSize: 'var(--text-sm)',
+            }}>{initials}</button>
           )}
         </nav>
       </header>
