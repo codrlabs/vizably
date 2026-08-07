@@ -7,8 +7,12 @@
  */
 const crypto = require('crypto');
 const { randomUUID } = require('crypto');
+<<<<<<< HEAD
 const { normalizeGitHubRepoName } = require('../../shared/githubRepoName');
 const { collectAllGitHubPages, findInGitHubPages } = require('./githubPagination');
+=======
+const { applyVizablyRepoPrefix } = require('../../shared/githubRepoName');
+>>>>>>> b850685 (feat: apply viz_ prefix on GitHub create and availability checks)
 
 const MANIFEST_PATH = 'vizably.json';
 /** Pre-rename store root — still loadable; rewritten to `MANIFEST_PATH` on load. */
@@ -160,7 +164,7 @@ class StorageService {
    * Create a private empty GitHub repo for the signed-in user (App UAT).
    * Does not initialize a Vizably store — caller runs fit-check then init.
    *
-   * @param {string} name repository name (not owner/name)
+   * @param {string} name repository name (not owner/name); stored as `viz_<name>`
    * @param {StorageClients} clients must include githubUserClient (or githubClient as UAT)
    * @param {object} [options]
    * @param {string} [options.installUrl] App install URL when needsInstall
@@ -390,7 +394,7 @@ class StorageService {
       throw err;
     }
 
-    const normalized = normalizeGitHubRepoName(name);
+    const normalized = applyVizablyRepoPrefix(name);
     if (!normalized) {
       const err = new Error('Repository name is required');
       err.status = 400;

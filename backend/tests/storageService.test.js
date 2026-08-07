@@ -350,7 +350,8 @@ test('checkGitHubRepoNameAvailability returns available on 404', async () => {
     githubUserClient: client,
   });
   assert.equal(result.status, 'available');
-  assert.equal(result.full_name, 'sam/fresh-repo');
+  assert.equal(result.normalizedName, 'viz_fresh-repo');
+  assert.equal(result.full_name, 'sam/viz_fresh-repo');
 });
 
 test('checkGitHubRepoNameAvailability returns taken when repo exists', async () => {
@@ -364,7 +365,8 @@ test('checkGitHubRepoNameAvailability returns taken when repo exists', async () 
     githubUserClient: client,
   });
   assert.equal(result.status, 'taken');
-  assert.match(result.message, /already exists/);
+  assert.equal(result.normalizedName, 'viz_site-audits');
+  assert.match(result.message, /viz_site-audits/);
 });
 
 test('checkGitHubRepoNameAvailability returns invalid for bad names', async () => {
@@ -384,14 +386,15 @@ test('createGitHubRepository creates a private empty repo and returns storageRef
       {
         id: 1,
         contents: 'write',
-        repos: ['sam/vizably-new'],
+        repos: ['sam/viz_scans'],
       },
     ],
   });
-  const result = await storageService.createGitHubRepository('vizably-new', {
+  const result = await storageService.createGitHubRepository('scans', {
     githubUserClient: client,
   });
-  assert.equal(result.storageRef.full_name, 'sam/vizably-new');
+  assert.equal(result.storageRef.full_name, 'sam/viz_scans');
+  assert.equal(result.storageRef.name, 'viz_scans');
   assert.equal(result.storageRef.id, 'R_kgNew');
   assert.equal(result.needsInstall, false);
   assert.equal(result.installUrl, null);
@@ -409,11 +412,12 @@ test('createGitHubRepository sets needsInstall when App cannot write yet', async
     ],
   });
   const result = await storageService.createGitHubRepository(
-    'vizably-new',
+    'scans',
     { githubUserClient: client },
     { installUrl: 'https://github.com/apps/vizably/installations/new' },
   );
   assert.equal(result.needsInstall, true);
+  assert.equal(result.storageRef.name, 'viz_scans');
   assert.equal(
     result.installUrl,
     'https://github.com/apps/vizably/installations/new',
@@ -432,10 +436,11 @@ test('createGitHubRepository skips install hop when installation covers all repo
       },
     ],
   });
-  const result = await storageService.createGitHubRepository('vizably-new', {
+  const result = await storageService.createGitHubRepository('scans', {
     githubUserClient: client,
   });
   assert.equal(result.needsInstall, false);
+  assert.equal(result.storageRef.name, 'viz_scans');
 });
 
 test('createGitHubRepository finds writable install when repo is past first page', async () => {
@@ -482,13 +487,13 @@ test('createGitHubRepository surfaces rate limits instead of needsInstall', asyn
   };
   const client = createMockGitHubClient({ installationProbeError: probeErr });
   await assert.rejects(
-    () => storageService.createGitHubRepository('vizably-new', { githubUserClient: client }),
+    () => storageService.createGitHubRepository('scans', { githubUserClient: client }),
     (err) => {
       assert.equal(err.code, 'GITHUB_RATE_LIMITED');
       assert.equal(err.status, 429);
       assert.match(err.message, /rate-limited/i);
       assert.match(err.message, /do not reinstall/i);
-      assert.equal(err.storageRef?.full_name, 'sam/vizably-new');
+      assert.equal(err.storageRef?.full_name, 'sam/viz_scans');
       return true;
     },
   );
@@ -500,12 +505,12 @@ test('createGitHubRepository surfaces network failures instead of needsInstall',
   probeErr.code = 'ENOTFOUND';
   const client = createMockGitHubClient({ installationProbeError: probeErr });
   await assert.rejects(
-    () => storageService.createGitHubRepository('vizably-new', { githubUserClient: client }),
+    () => storageService.createGitHubRepository('scans', { githubUserClient: client }),
     (err) => {
       assert.equal(err.code, 'GITHUB_NETWORK_ERROR');
       assert.equal(err.status, 503);
       assert.match(err.message, /network/i);
-      assert.equal(err.storageRef?.name, 'vizably-new');
+      assert.equal(err.storageRef?.name, 'viz_scans');
       return true;
     },
   );
@@ -518,7 +523,7 @@ test('createGitHubRepository surfaces auth failures instead of needsInstall', as
   probeErr.response = { data: { message: 'Bad credentials' }, headers: {} };
   const client = createMockGitHubClient({ installationProbeError: probeErr });
   await assert.rejects(
-    () => storageService.createGitHubRepository('vizably-new', { githubUserClient: client }),
+    () => storageService.createGitHubRepository('scans', { githubUserClient: client }),
     (err) => {
       assert.equal(err.code, 'GITHUB_AUTH_FAILED');
       assert.equal(err.status, 401);
@@ -535,7 +540,7 @@ test('createGitHubRepository surfaces GitHub outages instead of needsInstall', a
   probeErr.response = { data: { message: 'Server Error' }, headers: {} };
   const client = createMockGitHubClient({ installationProbeError: probeErr });
   await assert.rejects(
-    () => storageService.createGitHubRepository('vizably-new', { githubUserClient: client }),
+    () => storageService.createGitHubRepository('scans', { githubUserClient: client }),
     (err) => {
       assert.equal(err.code, 'GITHUB_UNAVAILABLE');
       assert.equal(err.status, 503);
@@ -549,7 +554,7 @@ test('createGitHubRepository rejects invalid names', async () => {
   const storageService = new StorageService();
   const client = createMockGitHubClient();
   await assert.rejects(
-    () => storageService.createGitHubRepository('sam/vizably-new', { githubUserClient: client }),
+    () => storageService.createGitHubRepository('sam/scans', { githubUserClient: client }),
     /name only/,
   );
   await assert.rejects(
@@ -562,22 +567,40 @@ test('createGitHubRepository rejects invalid names', async () => {
   );
 });
 
-test('createGitHubRepository normalizes whitespace before create', async () => {
+test('createGitHubRepository prefixes and normalizes whitespace before create', async () => {
   const storageService = new StorageService();
   const client = createMockGitHubClient({
     installationProbe: [
       {
         id: 1,
         contents: 'write',
-        repos: ['sam/vizably-new'],
+        repos: ['sam/viz_accessibility-results'],
       },
     ],
   });
-  const result = await storageService.createGitHubRepository('  vizably   new  ', {
+  const result = await storageService.createGitHubRepository('  accessibility   results  ', {
     githubUserClient: client,
   });
-  assert.equal(result.storageRef.full_name, 'sam/vizably-new');
-  assert.equal(result.storageRef.name, 'vizably-new');
+  assert.equal(result.storageRef.full_name, 'sam/viz_accessibility-results');
+  assert.equal(result.storageRef.name, 'viz_accessibility-results');
+});
+
+test('createGitHubRepository does not double-prefix an existing viz_ name', async () => {
+  const storageService = new StorageService();
+  const client = createMockGitHubClient({
+    installationProbe: [
+      {
+        id: 1,
+        contents: 'write',
+        repository_selection: 'all',
+        repos: [],
+      },
+    ],
+  });
+  const result = await storageService.createGitHubRepository('viz_reports', {
+    githubUserClient: client,
+  });
+  assert.equal(result.storageRef.name, 'viz_reports');
 });
 
 test('createGitHubRepository maps name-taken conflicts', async () => {
@@ -593,7 +616,7 @@ test('createGitHubRepository maps name-taken conflicts', async () => {
   const client = createMockGitHubClient({ createRepoError: conflict });
   await assert.rejects(
     () => storageService.createGitHubRepository('taken', { githubUserClient: client }),
-    /already exists/,
+    /viz_taken/,
   );
 });
 
