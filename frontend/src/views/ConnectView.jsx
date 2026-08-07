@@ -3,7 +3,10 @@ import { Button, Card } from '../design-system'
 import { Ico, GoogleMark } from '../lib/icons'
 import { apiClient } from '../lib/apiClient'
 import { PROVIDERS } from '../data/placeholders'
-import { normalizeGitHubRepoName } from '../utils/githubRepoName'
+import {
+  applyVizablyRepoPrefix,
+  VIZABLY_REPO_PREFIX,
+} from '../utils/githubRepoName'
 
 const STATUS_UI = {
   loadable: {
@@ -73,10 +76,13 @@ function storageRefFromRepo(repo) {
 function findRepoByName(storages, name) {
   const trimmed = name.trim()
   if (!trimmed) return null
+  const prefixed = applyVizablyRepoPrefix(trimmed) || trimmed
   return (
     storages.find((r) => r.name === trimmed) ||
+    storages.find((r) => r.name === prefixed) ||
     storages.find((r) => r.full_name === trimmed) ||
     storages.find((r) => r.full_name.endsWith(`/${trimmed}`)) ||
+    storages.find((r) => r.full_name.endsWith(`/${prefixed}`)) ||
     null
   )
 }
@@ -365,12 +371,13 @@ export default function ConnectView({
     (awaitingCreate ? nameUnavailable : confirmBlocked)
 
   const handleCreateRepo = async () => {
-    const name = normalizeGitHubRepoName(newRepoName)
+    const name = applyVizablyRepoPrefix(newRepoName)
     if (!name || creating || nameUnavailable) return
 
-    // Reflect normalized name in the input so users see what will be created.
-    if (name !== newRepoName) {
-      setNewRepoName(name)
+    // Keep the editable suffix in sync with whitespace normalization.
+    const suffix = name.slice(VIZABLY_REPO_PREFIX.length)
+    if (suffix !== newRepoName) {
+      setNewRepoName(suffix)
     }
 
     setCreating(true)
@@ -675,6 +682,17 @@ export default function ConnectView({
                 }}
               >
                 <span style={{ color: 'var(--text-faint)' }}>{Ico(pv.destIcon, 16)}</span>
+                <span
+                  aria-hidden="true"
+                  style={{
+                    font: 'var(--font-code)',
+                    fontSize: 'var(--text-sm)',
+                    color: 'var(--text-muted)',
+                    userSelect: 'none',
+                  }}
+                >
+                  {VIZABLY_REPO_PREFIX}
+                </span>
                 <input
                   value={newRepoName}
                   onClick={(e) => e.stopPropagation()}
@@ -684,9 +702,10 @@ export default function ConnectView({
                     setNameAvailability(null)
                     // Only clear create/install state when the typed name no longer
                     // matches the repo we just created — avoids extra re-render churn.
+                    const nextPrefixed = applyVizablyRepoPrefix(next)
                     if (
                       createdStorageRef &&
-                      next.trim() !== createdStorageRef.name &&
+                      nextPrefixed !== createdStorageRef.name &&
                       next.trim() !== createdStorageRef.full_name
                     ) {
                       setCreatedStorageRef(null)
@@ -695,7 +714,8 @@ export default function ConnectView({
                     }
                   }}
                   disabled={creating}
-                  aria-describedby="repo-name-availability"
+                  aria-describedby="repo-name-availability repo-name-prefix-hint"
+                  placeholder="scans"
                   style={{
                     flex: 1,
                     border: 'none',
@@ -775,6 +795,21 @@ export default function ConnectView({
                   </p>
                 </div>
               )}
+              <p
+                id="repo-name-prefix-hint"
+                style={{
+                  fontSize: 'var(--text-xs)',
+                  color: 'var(--text-muted)',
+                  margin: '8px 0 0',
+                  lineHeight: 1.45,
+                }}
+              >
+                Vizably creates the repo as{' '}
+                <code style={{ font: 'var(--font-code)' }}>
+                  {applyVizablyRepoPrefix(newRepoName) || `${VIZABLY_REPO_PREFIX}…`}
+                </code>{' '}
+                so storage repos are easy to recognize.
+              </p>
               <p
                 style={{
                   fontSize: 'var(--text-xs)',

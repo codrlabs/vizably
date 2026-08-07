@@ -32,10 +32,10 @@ function mockClient(overrides = {}) {
       provider: 'github',
       storageRef: {
         id: 'R_kgNew',
-        name: 'vizably-new',
-        full_name: 'sam/vizably-new',
+        name: 'viz_scans',
+        full_name: 'sam/viz_scans',
         private: true,
-        html_url: 'https://github.com/sam/vizably-new',
+        html_url: 'https://github.com/sam/viz_scans',
       },
       needsInstall: false,
       installUrl: null,
@@ -46,7 +46,7 @@ function mockClient(overrides = {}) {
 
 async function typeNewRepoName(value) {
   fireEvent.click(screen.getByText(/Create a new repository/i))
-  const input = screen.getByDisplayValue('vizably-scans')
+  const input = screen.getByDisplayValue('scans')
   fireEvent.change(input, { target: { value } })
   return input
 }
@@ -196,10 +196,10 @@ describe('ConnectView', () => {
   it('creates a new repository then validates for init', async () => {
     const created = {
       id: 'R_kgNew',
-      name: 'vizably-new',
-      full_name: 'sam/vizably-new',
+      name: 'viz_new',
+      full_name: 'sam/viz_new',
       private: true,
-      html_url: 'https://github.com/sam/vizably-new',
+      html_url: 'https://github.com/sam/viz_new',
     }
     const client = mockClient({
       createStorage: vi.fn().mockResolvedValue({
@@ -220,16 +220,16 @@ describe('ConnectView', () => {
 
     await waitForRepoPicker(client)
 
-    await typeNewRepoName('vizably-new')
+    await typeNewRepoName('new')
     expect(await screen.findByText(/is available/i)).toBeInTheDocument()
 
     fireEvent.click(screen.getByRole('button', { name: /create repository/i }))
 
-    await waitFor(() => expect(client.createStorage).toHaveBeenCalledWith('vizably-new'))
+    await waitFor(() => expect(client.createStorage).toHaveBeenCalledWith('viz_new'))
     await waitFor(() =>
       expect(client.validateStorage).toHaveBeenCalledWith(
         'github',
-        expect.objectContaining({ id: 'R_kgNew', full_name: 'sam/vizably-new' }),
+        expect.objectContaining({ id: 'R_kgNew', full_name: 'sam/viz_new' }),
       ),
     )
     expect(await screen.findByText('Ready to set up')).toBeInTheDocument()
@@ -242,10 +242,10 @@ describe('ConnectView', () => {
     err.code = 'GITHUB_RATE_LIMITED'
     err.storageRef = {
       id: 'R_kgNew',
-      name: 'vizably-new',
-      full_name: 'sam/vizably-new',
+      name: 'viz_new',
+      full_name: 'sam/viz_new',
       private: true,
-      html_url: 'https://github.com/sam/vizably-new',
+      html_url: 'https://github.com/sam/viz_new',
     }
     const client = mockClient({
       createStorage: vi.fn().mockRejectedValue(err),
@@ -257,8 +257,8 @@ describe('ConnectView', () => {
 
     await waitForRepoPicker(client)
     fireEvent.click(screen.getByText(/Create a new repository/i))
-    fireEvent.change(screen.getByDisplayValue('vizably-scans'), {
-      target: { value: 'vizably-new' },
+    fireEvent.change(screen.getByDisplayValue('scans'), {
+      target: { value: 'new' },
     })
     // Availability must resolve so Create is enabled.
     expect(await screen.findByText(/is available/i)).toBeInTheDocument()
@@ -268,16 +268,16 @@ describe('ConnectView', () => {
     expect(screen.queryByText(/Open GitHub App install/i)).not.toBeInTheDocument()
   })
 
-  it('normalizes whitespace in the repository name before create', async () => {
+  it('normalizes whitespace and applies viz_ before create', async () => {
     const client = mockClient({
       createStorage: vi.fn().mockResolvedValue({
         provider: 'github',
         storageRef: {
           id: 'R_kgNew',
-          name: 'vizably-new',
-          full_name: 'sam/vizably-new',
+          name: 'viz_accessibility-results',
+          full_name: 'sam/viz_accessibility-results',
           private: true,
-          html_url: 'https://github.com/sam/vizably-new',
+          html_url: 'https://github.com/sam/viz_accessibility-results',
         },
         needsInstall: false,
         installUrl: null,
@@ -288,11 +288,11 @@ describe('ConnectView', () => {
       }),
       checkRepoNameAvailability: vi.fn().mockResolvedValue({
         provider: 'github',
-        name: 'vizably-new',
-        normalizedName: 'vizably-new',
-        full_name: 'sam/vizably-new',
+        name: 'viz_accessibility-results',
+        normalizedName: 'viz_accessibility-results',
+        full_name: 'sam/viz_accessibility-results',
         status: 'available',
-        message: 'sam/vizably-new is available.',
+        message: 'sam/viz_accessibility-results is available.',
       }),
     })
 
@@ -302,14 +302,16 @@ describe('ConnectView', () => {
 
     await waitForRepoPicker(client)
     fireEvent.click(screen.getByText(/Create a new repository/i))
-    fireEvent.change(screen.getByDisplayValue('vizably-scans'), {
-      target: { value: '  vizably   new  ' },
+    fireEvent.change(screen.getByDisplayValue('scans'), {
+      target: { value: '  accessibility   results  ' },
     })
     expect(await screen.findByText(/is available/i)).toBeInTheDocument()
     fireEvent.click(screen.getByRole('button', { name: /create repository/i }))
 
-    await waitFor(() => expect(client.createStorage).toHaveBeenCalledWith('vizably-new'))
-    expect(screen.getByDisplayValue('vizably-new')).toBeInTheDocument()
+    await waitFor(() =>
+      expect(client.createStorage).toHaveBeenCalledWith('viz_accessibility-results'),
+    )
+    expect(screen.getByDisplayValue('accessibility-results')).toBeInTheDocument()
   })
 
   it('keeps focus on the repository name input while typing', async () => {
@@ -321,17 +323,17 @@ describe('ConnectView', () => {
     await waitForRepoPicker(client)
     fireEvent.click(screen.getByText(/Create a new repository/i))
 
-    const input = screen.getByDisplayValue('vizably-scans')
+    const input = screen.getByDisplayValue('scans')
     input.focus()
     expect(document.activeElement).toBe(input)
 
-    fireEvent.change(input, { target: { value: 'v' } })
+    fireEvent.change(input, { target: { value: 's' } })
     expect(document.activeElement).toBe(input)
-    fireEvent.change(input, { target: { value: 'vi' } })
+    fireEvent.change(input, { target: { value: 'sc' } })
     expect(document.activeElement).toBe(input)
-    fireEvent.change(input, { target: { value: 'viz' } })
+    fireEvent.change(input, { target: { value: 'sca' } })
     expect(document.activeElement).toBe(input)
-    expect(input).toHaveValue('viz')
+    expect(input).toHaveValue('sca')
   })
 
   it('shows taken status and blocks create for an existing name', async () => {
@@ -339,11 +341,11 @@ describe('ConnectView', () => {
       // Name is taken on GitHub but not in the local picker list.
       checkRepoNameAvailability: vi.fn().mockResolvedValue({
         provider: 'github',
-        name: 'already-taken',
-        normalizedName: 'already-taken',
-        full_name: 'sam/already-taken',
+        name: 'viz_already-taken',
+        normalizedName: 'viz_already-taken',
+        full_name: 'sam/viz_already-taken',
         status: 'taken',
-        message: 'A repository named "already-taken" already exists on your account.',
+        message: 'A repository named "viz_already-taken" already exists on your account.',
       }),
     })
 
@@ -365,10 +367,10 @@ describe('ConnectView', () => {
         provider: 'github',
         storageRef: {
           id: 'R_kgNew',
-          name: 'vizably-new',
-          full_name: 'sam/vizably-new',
+          name: 'viz_new',
+          full_name: 'sam/viz_new',
           private: true,
-          html_url: 'https://github.com/sam/vizably-new',
+          html_url: 'https://github.com/sam/viz_new',
         },
         needsInstall: true,
         installUrl: 'https://github.com/apps/vizably/installations/new',
@@ -380,7 +382,7 @@ describe('ConnectView', () => {
     )
 
     await waitForRepoPicker(client)
-    await typeNewRepoName('vizably-new')
+    await typeNewRepoName('new')
     expect(await screen.findByText(/is available/i)).toBeInTheDocument()
     fireEvent.click(screen.getByRole('button', { name: /create repository/i }))
 
@@ -389,5 +391,6 @@ describe('ConnectView', () => {
       'https://github.com/apps/vizably/installations/new',
     )
     expect(screen.getByText(/I've added it — refresh/i)).toBeInTheDocument()
+    expect(client.createStorage).toHaveBeenCalledWith('viz_new')
   })
 })
