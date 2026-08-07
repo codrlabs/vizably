@@ -83,7 +83,10 @@ scans/index      scans/ dir                            (init or cancel)
 
 The user can also choose **"Create a new repo/folder"** instead of selecting an
 existing one — that is just the `initializable` path against a freshly created
-store.
+store. For GitHub, Vizably always creates the repository as `viz_<name>`
+(for example `viz_scans`, `viz_reports`) so Vizably-managed storage is easy to
+recognize and harder to confuse with unrelated repos. The prefix is applied on
+create and name-availability checks; selecting an existing repo is unchanged.
 
 ### Identity model — read this first
 
@@ -542,8 +545,8 @@ await octokit.repos.listForAuthenticatedUser({ visibility: 'all', per_page: 100 
 // Existence / fit-check read — get the manifest blob
 await octokit.repos.getContent({ owner, repo, path: 'vizably.json' }); // 404 ⇒ no manifest
 
-// Create a repo for the "new" path
-await octokit.repos.createForAuthenticatedUser({ name, private: true });
+// Create a repo for the "new" path — name is always `viz_<normalized>`
+await octokit.repos.createForAuthenticatedUser({ name: 'viz_scans', private: true });
 
 // Atomic-ish write (pass sha to update; omit to create)
 await octokit.repos.createOrUpdateFileContents({ owner, repo, path, message, content, branch, sha });
