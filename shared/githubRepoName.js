@@ -20,4 +20,29 @@ function normalizeGitHubRepoName(name) {
     .replace(/^-+|-+$/g, '');
 }
 
-module.exports = { normalizeGitHubRepoName };
+/** Prefix applied to every repository Vizably creates. */
+const VIZABLY_REPO_PREFIX = 'viz_';
+
+/**
+ * Normalize then ensure the Vizably create-path prefix.
+ * Idempotent: names that already start with `viz_` (any casing) keep a single prefix.
+ *
+ * @param {unknown} name
+ * @returns {string}
+ */
+function applyVizablyRepoPrefix(name) {
+  const normalized = normalizeGitHubRepoName(name);
+  if (!normalized) {
+    return '';
+  }
+  if (normalized.toLowerCase().startsWith(VIZABLY_REPO_PREFIX)) {
+    return `${VIZABLY_REPO_PREFIX}${normalized.slice(VIZABLY_REPO_PREFIX.length)}`;
+  }
+  return `${VIZABLY_REPO_PREFIX}${normalized}`;
+}
+
+module.exports = {
+  VIZABLY_REPO_PREFIX,
+  normalizeGitHubRepoName,
+  applyVizablyRepoPrefix,
+};
