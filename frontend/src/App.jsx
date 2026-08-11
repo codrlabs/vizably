@@ -402,6 +402,7 @@ function AppRoutes() {
             <RequireStorage>
               <AccountView
                 onSignOut={signOut}
+                onAccountDeleted={handleAccountDeleted}
                 user={user}
                 shellUser={shellUser}
                 provider={provider}

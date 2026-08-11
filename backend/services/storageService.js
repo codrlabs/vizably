@@ -1490,21 +1490,28 @@ class StorageService {
    * @private
    */
   async _writeGitHubFiles(octokit, owner, repo, branch, files, message) {
-    try {
-      return await this._writeGitHubFilesViaGit(
-        octokit,
-        owner,
-        repo,
-        branch,
-        files,
-        message,
-      );
-    } catch (err) {
-      if (!this._shouldFallbackToContentsApi(err)) {
-        throw Object.assign(new Error(this._formatGitHubStorageError(err)), {
-          status: err?.status,
-          cause: err,
-        });
+    // Delete-only batches (account wipe) skip the Git Database API: GitHub
+    // rejects empty trees (`{"tree":[]}` → 422) when the wipe removes every
+    // file, and sha:null deletes are unreliable. Contents deleteFile handles both.
+    const deleteOnly =
+      files.length > 0 && files.every((file) => Boolean(file.delete));
+    if (!deleteOnly) {
+      try {
+        return await this._writeGitHubFilesViaGit(
+          octokit,
+          owner,
+          repo,
+          branch,
+          files,
+          message,
+        );
+      } catch (err) {
+        if (!this._shouldFallbackToContentsApi(err)) {
+          throw Object.assign(new Error(this._formatGitHubStorageError(err)), {
+            status: err?.status,
+            cause: err,
+          });
+        }
       }
     }
 
@@ -1537,11 +1544,18 @@ class StorageService {
     if (err?.status === 409 && /empty/i.test(message)) {
       return true;
     }
+    // Empty-tree / invalid delete payloads are not branch conflicts.
+    if (err?.status === 422 && /invalid tree info/i.test(message)) {
+      return true;
+    }
     if (this._isRefConflict(err)) {
       return false;
     }
+    // GitHub often returns 404 (not 403) when the Git Database API cannot apply a
+    // tree change. Contents API deleteFile still works.
     return (
       err?.status === 403 ||
+      err?.status === 404 ||
       /not accessible by integration/i.test(message) ||
       /Resource not accessible/i.test(message)
     );
@@ -1564,38 +1578,101 @@ class StorageService {
       commit_sha: baseCommitSha,
     });
 
-    const treeEntries = await Promise.all(
-      files.map(async (file) => {
-        if (file.delete) {
-          // GitHub deletes a path from the tree when sha is null.
-          return {
-            path: file.path,
-            mode: '100644',
-            type: 'blob',
-            sha: null,
-          };
-        }
+    const deletePaths = new Set(
+      files.filter((file) => file.delete).map((file) => file.path),
+    );
+    const writeFiles = files.filter((file) => !file.delete);
+
+    /** @type {Array<{ path: string, mode: string, type: string, sha: string }>} */
+    let treeEntries;
+
+    if (deletePaths.size > 0) {
+      // Prefer rebuilding the tree without deleted paths. createTree + sha:null
+      // frequently returns 404 against real GitHub even when the paths exist.
+      const { data: existing } = await octokit.rest.git.getTree({
+        owner,
+        repo,
+        tree_sha: baseCommit.tree.sha,
+        recursive: 'true',
+      });
+      if (existing.truncated) {
+        const err = new Error(
+          'Git tree is too large for an atomic wipe; falling back to Contents API',
+        );
+        err.status = 403;
+        throw err;
+      }
+
+      treeEntries = (existing.tree || [])
+        .filter(
+          (entry) =>
+            entry.type === 'blob' &&
+            entry.path &&
+            entry.sha &&
+            !deletePaths.has(entry.path),
+        )
+        .map((entry) => ({
+          path: entry.path,
+          mode: entry.mode || '100644',
+          type: 'blob',
+          sha: entry.sha,
+        }));
+
+      for (const file of writeFiles) {
         const { data: blob } = await octokit.rest.git.createBlob({
           owner,
           repo,
           content: Buffer.from(file.content, 'utf8').toString('base64'),
           encoding: 'base64',
         });
-        return {
+        treeEntries = treeEntries.filter((entry) => entry.path !== file.path);
+        treeEntries.push({
           path: file.path,
           mode: '100644',
           type: 'blob',
           sha: blob.sha,
-        };
-      }),
-    );
+        });
+      }
 
-    const { data: tree } = await octokit.rest.git.createTree({
-      owner,
-      repo,
-      base_tree: baseCommit.tree.sha,
-      tree: treeEntries,
-    });
+      // GitHub rejects createTree with an empty tree array.
+      if (treeEntries.length === 0) {
+        const err = new Error(
+          'Invalid tree info — cannot create an empty Git tree; use Contents API',
+        );
+        err.status = 422;
+        err.response = { data: { message: 'Invalid tree info' } };
+        throw err;
+      }
+    } else {
+      treeEntries = await Promise.all(
+        writeFiles.map(async (file) => {
+          const { data: blob } = await octokit.rest.git.createBlob({
+            owner,
+            repo,
+            content: Buffer.from(file.content, 'utf8').toString('base64'),
+            encoding: 'base64',
+          });
+          return {
+            path: file.path,
+            mode: '100644',
+            type: 'blob',
+            sha: blob.sha,
+          };
+        }),
+      );
+    }
+
+    const createTreeParams =
+      deletePaths.size > 0
+        ? { owner, repo, tree: treeEntries }
+        : {
+            owner,
+            repo,
+            base_tree: baseCommit.tree.sha,
+            tree: treeEntries,
+          };
+
+    const { data: tree } = await octokit.rest.git.createTree(createTreeParams);
 
     const { data: commit } = await octokit.rest.git.createCommit({
       owner,

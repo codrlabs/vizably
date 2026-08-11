@@ -225,9 +225,40 @@ function createMockGitHubClient(initial = {}) {
           blobs[sha] = Buffer.from(content, 'base64').toString('utf8');
           return { data: { sha } };
         },
-        createTree: async ({ tree }) => {
+        getTree: async () => {
+          if (initial.getTreeError) {
+            throw initial.getTreeError;
+          }
+          return {
+            data: {
+              truncated: Boolean(initial.treeTruncated),
+              tree: Object.keys(files).map((path) => ({
+                path,
+                mode: '100644',
+                type: 'blob',
+                sha: files[path].sha,
+              })),
+            },
+          };
+        },
+        createTree: async ({ tree, base_tree: baseTree }) => {
+          if (typeof initial.createTree === 'function') {
+            return initial.createTree({ tree, base_tree: baseTree });
+          }
+          if (initial.createTreeError) {
+            throw initial.createTreeError;
+          }
           treeCounter += 1;
           const sha = `tree-${treeCounter}`;
+          // Full-tree rebuilds (no base_tree) replace the working set.
+          if (!baseTree) {
+            const keep = new Set(tree.map((entry) => entry.path));
+            for (const path of Object.keys(files)) {
+              if (!keep.has(path)) {
+                delete files[path];
+              }
+            }
+          }
           pendingTrees[sha] = tree;
           return { data: { sha } };
         },
@@ -1196,6 +1227,66 @@ test('wipeAccountStore is idempotent when the store is already empty', async () 
   assert.equal(result.wiped, true);
   assert.deepEqual(result.pathsRemoved, []);
   assert.equal(client.files['README.md'].content, '# only\n');
+});
+
+test('wipeAccountStore removes every Vizably file when the repo has nothing else', async () => {
+  const storageService = new StorageService();
+  const client = createMockGitHubClient({
+    files: {
+      'vizably.json': {
+        content: JSON.stringify(manifest()),
+        sha: 'sha-manifest',
+      },
+      'scans/index.json': {
+        content: JSON.stringify({ schemaVersion: 1, scans: [] }),
+        sha: 'sha-index',
+      },
+    },
+  });
+
+  const result = await storageService.wipeAccountStore('github', STORAGE_REF, {
+    githubClient: client,
+  });
+
+  assert.equal(result.wiped, true);
+  assert.deepEqual(
+    [...result.pathsRemoved].sort(),
+    ['scans/index.json', 'vizably.json'],
+  );
+  assert.equal(Object.keys(client.files).length, 0);
+});
+
+test('wipeAccountStore falls back to Contents API when Git tree delete returns 404', async () => {
+  const storageService = new StorageService();
+  const notFound = new Error('Not Found');
+  notFound.status = 404;
+  notFound.response = {
+    url: 'https://api.github.com/repos/acme/vizably-data/git/trees',
+    data: { message: 'Not Found' },
+  };
+  const client = createMockGitHubClient({
+    files: {
+      'vizably.json': {
+        content: JSON.stringify(manifest()),
+        sha: 'sha-manifest',
+      },
+      'scans/index.json': {
+        content: JSON.stringify({ schemaVersion: 1, scans: [] }),
+        sha: 'sha-index',
+      },
+    },
+    getTreeError: notFound,
+  });
+
+  const result = await storageService.wipeAccountStore('github', STORAGE_REF, {
+    githubClient: client,
+  });
+
+  assert.equal(result.wiped, true);
+  assert.ok(result.pathsRemoved.includes('vizably.json'));
+  assert.ok(result.pathsRemoved.includes('scans/index.json'));
+  assert.equal(client.files['vizably.json'], undefined);
+  assert.equal(client.files['scans/index.json'], undefined);
 });
 
 test('wipeAccountStore stubs google until Phase 3', async () => {
