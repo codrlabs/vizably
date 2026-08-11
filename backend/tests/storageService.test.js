@@ -106,6 +106,27 @@ function createMockGitHubClient(initial = {}) {
           };
           return { data: created };
         },
+        delete: async () => {
+          if (initial.deleteRepoError) {
+            throw initial.deleteRepoError;
+          }
+          state.repoDeleted = true;
+          return { status: 204 };
+        },
+        deleteFile: async ({ path, sha }) => {
+          if (!files[path]) {
+            const err = new Error('Not Found');
+            err.status = 404;
+            throw err;
+          }
+          if (sha && files[path].sha !== sha) {
+            const err = new Error('Reference update failed');
+            err.status = 422;
+            throw err;
+          }
+          delete files[path];
+          return { data: { commit: { sha: `delete-${path}` } } };
+        },
         createOrUpdateFileContents: async ({ path, content, sha }) => {
           if (createOrUpdateFailures > 0) {
             createOrUpdateFailures -= 1;
@@ -240,7 +261,14 @@ function createMockGitHubClient(initial = {}) {
 
           if (pending) {
             for (const entry of pending.tree || []) {
-              if (entry.path && entry.sha && blobs[entry.sha]) {
+              if (!entry.path) {
+                continue;
+              }
+              if (entry.sha == null) {
+                delete files[entry.path];
+                continue;
+              }
+              if (blobs[entry.sha]) {
                 files[entry.path] = {
                   content: blobs[entry.sha],
                   sha: entry.sha,

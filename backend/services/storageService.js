@@ -437,6 +437,157 @@ class StorageService {
   }
 
   /**
+   * Remove Vizably account files from the connected store (manifest + scans/).
+   * Does not delete the GitHub repository itself.
+   *
+   * @param {'github' | 'google'} provider
+   * @param {object} storageRef
+   * @param {StorageClients} clients
+   * @returns {Promise<{ wiped: boolean, pathsRemoved: string[], storageRef: object }>}
+   */
+  async wipeAccountStore(provider, storageRef, clients) {
+    if (provider === 'google') {
+      const err = new Error(GOOGLE_NOT_AVAILABLE);
+      err.status = 501;
+      err.code = 'PROVIDER_NOT_AVAILABLE';
+      throw err;
+    }
+    if (provider !== 'github') {
+      const err = new Error(`Unsupported storage provider: ${provider}`);
+      err.status = 400;
+      throw err;
+    }
+
+    const octokit = clients.githubClient ?? clients.githubUserClient;
+    if (!octokit) {
+      throw new Error('GitHub client is required to wipe account storage');
+    }
+
+    const { owner, repo } = this._parseGitHubRef(storageRef);
+    const branch = await this._resolveGitHubBranch(
+      octokit,
+      owner,
+      repo,
+      storageRef.branch,
+    );
+
+    /** @type {Array<{ path: string, delete: true, sha?: string }>} */
+    const toDelete = [];
+
+    for (const path of [MANIFEST_PATH, LEGACY_MANIFEST_PATH]) {
+      const file = await this._readGitHubFile(octokit, owner, repo, path, branch);
+      if (file) {
+        toDelete.push({ path, delete: true, sha: file.sha });
+      }
+    }
+
+    const scanEntries = await this._listGitHubDirectory(
+      octokit,
+      owner,
+      repo,
+      SCANS_DIR,
+      branch,
+    );
+    for (const entry of scanEntries) {
+      if (entry.type !== 'file' || !entry.name) {
+        continue;
+      }
+      toDelete.push({
+        path: `${SCANS_DIR}/${entry.name}`,
+        delete: true,
+        sha: entry.sha,
+      });
+    }
+
+    if (toDelete.length === 0) {
+      return {
+        wiped: true,
+        pathsRemoved: [],
+        storageRef: this._normalizeGitHubStorageRef(storageRef, branch),
+      };
+    }
+
+    await this._writeGitHubFiles(
+      octokit,
+      owner,
+      repo,
+      branch,
+      toDelete,
+      'Remove Vizably account store',
+    );
+
+    return {
+      wiped: true,
+      pathsRemoved: toDelete.map((f) => f.path),
+      storageRef: this._normalizeGitHubStorageRef(storageRef, branch),
+    };
+  }
+
+  /**
+   * Delete the GitHub repository that holds the account store.
+   * Requires a user access token (Administration permission on the App).
+   *
+   * @param {object} storageRef
+   * @param {StorageClients} clients
+   * @returns {Promise<{ deleted: boolean, full_name: string }>}
+   */
+  async deleteGitHubRepository(storageRef, clients) {
+    const octokit = clients.githubUserClient ?? clients.githubClient;
+    if (!octokit) {
+      throw new Error('GitHub user client is required to delete a repository');
+    }
+
+    const { owner, repo } = this._parseGitHubRef(storageRef);
+    const fullName = `${owner}/${repo}`;
+
+    try {
+      await octokit.rest.repos.delete({ owner, repo });
+    } catch (err) {
+      throw this._formatGitHubDeleteError(err, fullName);
+    }
+
+    return { deleted: true, full_name: fullName };
+  }
+
+  /**
+   * @param {unknown} err
+   * @param {string} fullName
+   * @private
+   */
+  _formatGitHubDeleteError(err, fullName) {
+    const status = err?.status;
+    const message = err?.response?.data?.message ?? err?.message ?? '';
+
+    if (status === 403 || status === 401) {
+      const formatted = new Error(
+        /not accessible by integration|Resource not accessible/i.test(message)
+          ? 'GitHub App cannot delete repositories. Add Repository permissions → Administration: Read and write, accept the permission upgrade on your installation, then sign out and sign in again.'
+          : message ||
+            'GitHub refused to delete this repository. Confirm Administration access, then try again.',
+      );
+      formatted.status = 403;
+      formatted.code = 'REPO_DELETE_FORBIDDEN';
+      return formatted;
+    }
+
+    if (status === 404) {
+      const formatted = new Error(
+        `Repository "${fullName}" was not found (it may already be deleted).`,
+      );
+      formatted.status = 404;
+      formatted.code = 'REPO_NOT_FOUND';
+      return formatted;
+    }
+
+    const formatted = new Error(
+      message || `Could not delete repository "${fullName}".`,
+    );
+    formatted.status = status || 500;
+    formatted.code = 'REPO_DELETE_FAILED';
+    return formatted;
+  }
+
+  /**
    * @param {'github' | 'google'} provider
    * @param {object} storageRef
    * @param {StorageClients} clients
@@ -1415,6 +1566,15 @@ class StorageService {
 
     const treeEntries = await Promise.all(
       files.map(async (file) => {
+        if (file.delete) {
+          // GitHub deletes a path from the tree when sha is null.
+          return {
+            path: file.path,
+            mode: '100644',
+            type: 'blob',
+            sha: null,
+          };
+        }
         const { data: blob } = await octokit.rest.git.createBlob({
           owner,
           repo,
@@ -1486,6 +1646,22 @@ class StorageService {
           : `${message} (${i + 1}/${files.length})`;
 
       try {
+        if (file.delete) {
+          if (!sha) {
+            continue;
+          }
+          const { data } = await octokit.rest.repos.deleteFile({
+            owner,
+            repo,
+            path: file.path,
+            message: fileMessage,
+            sha,
+            branch,
+          });
+          lastCommit = data.commit;
+          continue;
+        }
+
         const { data } = await octokit.rest.repos.createOrUpdateFileContents({
           owner,
           repo,
