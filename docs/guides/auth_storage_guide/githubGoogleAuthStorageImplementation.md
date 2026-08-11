@@ -253,6 +253,8 @@ at router level. **No frontend imports** (`PROVIDERS` lives in the frontend only
 | GET | `/api/auth/user` | Current user profile (+ `storage` if attached). No tokens. |
 | GET | `/api/auth/status` | `{ authenticated, user }` |
 | POST | `/api/auth/logout` | `req.logout()`, destroy session, clear cookie |
+| POST | `/api/auth/account/wipe` | Remove Vizably files (`vizably.json` + `scans/`) from attached storage; clear session storage |
+| POST | `/api/auth/account/delete-repository` | `{ confirm: true, storageRef? }` — optionally delete the GitHub repo (Administration) |
 
 **Mounting** — exactly once, in `backend/routes/index.js`:
 

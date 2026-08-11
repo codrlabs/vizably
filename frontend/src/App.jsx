@@ -304,6 +304,22 @@ function AppRoutes() {
     navigate(PATHS.landing)
   }
 
+  const handleAccountDeleted = async ({ deletedRepository }) => {
+    try {
+      await apiClient.logout()
+    } catch {
+      // Clear local state even if the network call fails.
+    }
+    setUser(null)
+    navigate(PATHS.landing, {
+      replace: true,
+      state: {
+        accountDeleted: true,
+        deletedRepository: Boolean(deletedRepository),
+      },
+    })
+  }
+
   const route = routeKeyFor(location.pathname)
 
   useEffect(() => {

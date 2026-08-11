@@ -1,9 +1,14 @@
 import { describe, it, expect, vi } from 'vitest'
 import { render, screen, fireEvent, waitFor } from '@testing-library/react'
+import { MemoryRouter } from 'react-router-dom'
 import LandingView from '../views/LandingView'
 
 function renderLanding(onScan = vi.fn()) {
-  render(<LandingView onScan={onScan} />)
+  render(
+    <MemoryRouter>
+      <LandingView onScan={onScan} />
+    </MemoryRouter>,
+  )
   return onScan
 }
 

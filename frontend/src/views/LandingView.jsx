@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { useLocation } from 'react-router-dom'
 import { Button, Input } from '../design-system'
 import ScanProgressIndicator from '../components/ScanProgressIndicator'
 import { Ico } from '../lib/icons'
@@ -10,9 +11,17 @@ import { normalizeUrl } from '../utils/urlValidator'
  * when results are ready (the App navigates away on success).
  */
 export default function LandingView({ onScan }) {
+  const location = useLocation()
+  const deletionNotice = location.state?.accountDeleted
+    ? location.state.deletedRepository
+      ? 'Your Vizably account data was removed and the GitHub repository was deleted.'
+      : 'Your Vizably account data was removed from storage.'
+    : null
+
   const [url, setUrl] = useState('')
   const [status, setStatus] = useState('idle')
   const [err, setErr] = useState('')
+  const [notice, setNotice] = useState(deletionNotice)
 
   const examples = ['codrlabs.com', 'stripe.com', 'wikipedia.org']
 
@@ -36,6 +45,47 @@ export default function LandingView({ onScan }) {
   return (
     <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '48px 24px', textAlign: 'center' }}>
       <div style={{ maxWidth: 680, width: '100%' }}>
+        {notice && (
+          <div
+            role="status"
+            style={{
+              marginBottom: 20,
+              padding: '12px 14px',
+              borderRadius: 'var(--radius-md)',
+              background: 'var(--accent-subtle)',
+              border: '1px solid var(--blue-100)',
+              color: 'var(--ink-800)',
+              fontSize: 'var(--text-sm)',
+              lineHeight: 1.45,
+              textAlign: 'left',
+              display: 'flex',
+              gap: 10,
+              alignItems: 'flex-start',
+            }}
+          >
+            <span style={{ color: 'var(--accent)', marginTop: 1 }}>{Ico('CircleCheck', 16, 'currentColor')}</span>
+            <div style={{ flex: 1 }}>
+              {notice}
+              <button
+                type="button"
+                onClick={() => setNotice(null)}
+                style={{
+                  display: 'block',
+                  marginTop: 8,
+                  background: 'none',
+                  border: 'none',
+                  padding: 0,
+                  cursor: 'pointer',
+                  font: 'var(--font-label)',
+                  fontSize: 'var(--text-xs)',
+                  color: 'var(--accent)',
+                }}
+              >
+                Dismiss
+              </button>
+            </div>
+          </div>
+        )}
         <div style={{ font: 'var(--font-label)', color: 'var(--accent)', letterSpacing: '0.08em', textTransform: 'uppercase', fontSize: 'var(--text-xs)', marginBottom: 16 }}>
           WCAG accessibility scanner
         </div>

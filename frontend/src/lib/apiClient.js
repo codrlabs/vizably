@@ -96,6 +96,36 @@ export class ApiClient {
   }
 
   /**
+   * Wipe Vizably files (manifest + scans/) from the attached store.
+   * @returns {Promise<{
+   *   success: boolean,
+   *   wiped: boolean,
+   *   pathsRemoved: string[],
+   *   storageRef: object,
+   * }>}
+   */
+  wipeAccount() {
+    return this._request('/api/auth/account/wipe', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({}),
+    })
+  }
+
+  /**
+   * Delete the GitHub repository that held the account store.
+   * @param {object} storageRef from wipe response (session storage is cleared after wipe)
+   * @returns {Promise<{ success: boolean, deleted: boolean, full_name: string }>}
+   */
+  deleteAccountRepository(storageRef) {
+    return this._request('/api/auth/account/delete-repository', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ confirm: true, storageRef }),
+    })
+  }
+
+  /**
    * @param {'github' | 'google'} provider
    * @returns {Promise<{ provider: string, storages: object[] }>}
    */

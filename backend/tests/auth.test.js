@@ -512,3 +512,93 @@ test('POST /api/auth/storage load attaches account to the session user', async (
   assert.equal(user.storage.full_name, 'sam/repo');
   assert.equal(persisted, true);
 });
+
+test('POST /api/auth/account/wipe requires authentication', async () => {
+  const app = createTestApp();
+  const res = await request(app).post('/api/auth/account/wipe');
+  assert.equal(res.status, 401);
+});
+
+test('POST /api/auth/account/wipe clears session storage after wipe', async () => {
+  const user = {
+    ...AUTHED_USER,
+    storage: { id: 'R_kg', full_name: 'sam/site-audits', provider: 'github' },
+    account: { accountId: 'a1', scanCount: 2 },
+  };
+  let persisted = false;
+  const app = createAuthedApp({
+    user,
+    authService: {
+      clientsFor: async () => ({ githubClient: {} }),
+      persistUser: async () => {
+        persisted = true;
+      },
+    },
+    storageService: {
+      wipeAccountStore: async () => ({
+        wiped: true,
+        pathsRemoved: ['vizably.json', 'scans/index.json'],
+        storageRef: { id: 'R_kg', full_name: 'sam/site-audits', branch: 'main' },
+      }),
+    },
+  });
+  const res = await request(app).post('/api/auth/account/wipe').send({});
+  assert.equal(res.status, 200);
+  assert.equal(res.body.success, true);
+  assert.equal(res.body.wiped, true);
+  assert.equal(user.storage, undefined);
+  assert.equal(user.account, undefined);
+  assert.equal(persisted, true);
+});
+
+test('POST /api/auth/account/delete-repository requires confirm true', async () => {
+  const app = createAuthedApp({
+    user: {
+      ...AUTHED_USER,
+      storage: { id: 'R_kg', full_name: 'sam/site-audits' },
+    },
+    authService: {
+      clientsFor: async () => ({ githubUserClient: {} }),
+      persistUser: async () => {},
+    },
+    storageService: {
+      deleteGitHubRepository: async () => {
+        throw new Error('should not be called');
+      },
+    },
+  });
+  const res = await request(app)
+    .post('/api/auth/account/delete-repository')
+    .send({ confirm: false });
+  assert.equal(res.status, 400);
+  assert.match(res.body.error, /confirm/);
+});
+
+test('POST /api/auth/account/delete-repository deletes when confirmed', async () => {
+  const user = {
+    ...AUTHED_USER,
+    storage: { id: 'R_kg', full_name: 'sam/site-audits' },
+  };
+  const app = createAuthedApp({
+    user,
+    authService: {
+      clientsFor: async () => ({ githubUserClient: {} }),
+      persistUser: async () => {},
+    },
+    storageService: {
+      deleteGitHubRepository: async (ref) => ({
+        deleted: true,
+        full_name: ref.full_name,
+      }),
+    },
+  });
+  const res = await request(app)
+    .post('/api/auth/account/delete-repository')
+    .send({
+      confirm: true,
+      storageRef: { id: 'R_kg', full_name: 'sam/site-audits' },
+    });
+  assert.equal(res.status, 200);
+  assert.equal(res.body.deleted, true);
+  assert.equal(res.body.full_name, 'sam/site-audits');
+});

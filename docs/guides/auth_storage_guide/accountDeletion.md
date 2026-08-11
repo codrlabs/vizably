@@ -247,16 +247,16 @@ Cursor co-author trailers if the team asks to omit them.
 
 ## 10. Acceptance checklist (closes #82)
 
-- [ ] “Delete my account” no longer only signs the user out.
-- [ ] Vizably files (`vizably.json` / legacy manifest + `scans/`) are removed from
+- [x] “Delete my account” no longer only signs the user out.
+- [x] Vizably files (`vizably.json` / legacy manifest + `scans/`) are removed from
       the connected store.
-- [ ] User is asked whether to delete the GitHub repository; Yes deletes it, No leaves it.
-- [ ] Session is cleared afterward; user cannot load the old account without
+- [x] User is asked whether to delete the GitHub repository; Yes deletes it, No leaves it.
+- [x] Session is cleared afterward; user cannot load the old account without
       reconnecting / re-init.
-- [ ] Failures (permissions, network) show clear errors and do not silently
+- [x] Failures (permissions, network) show clear errors and do not silently
       pretend deletion succeeded.
-- [ ] Backend + frontend tests cover wipe, optional repo delete, and logout.
-- [ ] Docs updated; Google remains explicitly stubbed until Phase 3.
+- [x] Backend + frontend tests cover wipe, optional repo delete, and logout.
+- [x] Docs updated; Google remains explicitly stubbed until Phase 3.
 
 When the checklist is green and the PR is merged, close
 [#82](https://github.com/codrlabs/vizably/issues/82).

@@ -264,6 +264,87 @@ function makeAuthRouter({ authService, storageService }) {
     });
   });
 
+  router.post('/account/wipe', requireAuth, async (req, res) => {
+    try {
+      const storageRef = req.user?.storage;
+      if (!storageRef?.full_name && !storageRef?.id) {
+        return res.status(400).json({
+          error: 'No storage is attached to this session. Connect a repository first.',
+        });
+      }
+
+      const provider = req.body?.provider || storageRef.provider || 'github';
+      const clients = await authService.clientsFor(req.user, { storageRef });
+      const result = await storageService.wipeAccountStore(
+        provider,
+        storageRef,
+        clients,
+      );
+
+      delete req.user.storage;
+      delete req.user.account;
+      await authService.persistUser(req);
+
+      return res.json({
+        success: true,
+        wiped: result.wiped,
+        pathsRemoved: result.pathsRemoved,
+        storageRef: result.storageRef,
+      });
+    } catch (err) {
+      console.error(err);
+      const allowed = new Set([400, 401, 403, 404, 501, 502, 503]);
+      const status = allowed.has(err.status) ? err.status : 400;
+      return res.status(status).json({
+        error: err.message || 'Failed to wipe account storage',
+        code: err.code || undefined,
+      });
+    }
+  });
+
+  router.post('/account/delete-repository', requireAuth, async (req, res) => {
+    try {
+      if (req.body?.confirm !== true) {
+        return res.status(400).json({
+          error: 'confirm: true is required to delete the repository',
+        });
+      }
+
+      // Prefer the ref returned from wipe (session storage is cleared after wipe).
+      const storageRef = req.body?.storageRef || req.user?.storage;
+      if (!storageRef?.full_name && !storageRef?.id) {
+        return res.status(400).json({
+          error:
+            'storageRef is required (pass the wipe response storageRef after clearing the session store).',
+        });
+      }
+
+      const clients = await authService.clientsFor(req.user, { storageRef });
+      const result = await storageService.deleteGitHubRepository(
+        storageRef,
+        clients,
+      );
+
+      delete req.user.storage;
+      delete req.user.account;
+      await authService.persistUser(req);
+
+      return res.json({
+        success: true,
+        deleted: result.deleted,
+        full_name: result.full_name,
+      });
+    } catch (err) {
+      console.error(err);
+      const allowed = new Set([400, 401, 403, 404, 501, 502, 503]);
+      const status = allowed.has(err.status) ? err.status : 400;
+      return res.status(status).json({
+        error: err.message || 'Failed to delete repository',
+        code: err.code || undefined,
+      });
+    }
+  });
+
   return router;
 }
 

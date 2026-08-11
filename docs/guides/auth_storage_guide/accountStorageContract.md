@@ -205,6 +205,24 @@ summary) must be atomic or partial-write tolerant:
 
 ---
 
+## Deleting a store
+
+Account deletion is **storage wipe**, not deleting the user’s GitHub/Google
+identity:
+
+1. **Wipe (required)** — delete only Vizably paths in one commit:
+   `vizably.json`, legacy `equalview.json` if present, and every file under
+   `scans/`. Unrelated root files stay untouched.
+2. **Delete repository (optional)** — after wipe, the user may choose to delete
+   the GitHub repository (`repos.delete`). Requires Administration permission.
+3. **Session** — clear attached `storage` / `account` from the session and log
+   out.
+
+See [`accountDeletion.md`](accountDeletion.md) for the full product flow and
+API surface.
+
+---
+
 ## Quick checklist for implementers
 
 - [ ] `vizably.json` written with random `account.id` + stable provider ids.

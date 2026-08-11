@@ -21,7 +21,7 @@ export default function LegalView({ doc = 'privacy', onNav }) {
         'We don’t run advertising trackers or third-party ad pixels.',
         'We don’t store scans from signed-out visitors beyond the time it takes to show your results.',
       ] },
-      { h: 'How long we keep it', p: 'Because saved reports live in your storage, you control retention: remove individual scans, clear them all, or turn on auto-delete for anything older than 90 days. Disconnecting your account removes the scans Vizably saved there and revokes our access.' },
+      { h: 'How long we keep it', p: 'Because saved reports live in your storage, you control retention: remove individual scans, clear them all, or turn on auto-delete for anything older than 90 days. Deleting your Vizably account removes the scans Vizably saved there (and can optionally delete the connected repository), then revokes our session access.' },
       { h: 'Your controls', p: 'You can view, export, or delete your data at any time from Account → Settings. Deleting is immediate and permanent.' },
       { h: 'Contact', p: 'Questions about privacy? Open an issue on our GitHub repository and we’ll respond in the open.' },
     ],

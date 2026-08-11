@@ -108,6 +108,8 @@ Provider-neutral routes; Google OAuth endpoints stubbed until Phase 3.
 - [x] `GET /user` — safe profile (+ `storage`), **no tokens**
 - [x] `GET /status` — `{ authenticated, user }`
 - [x] `POST /logout` — `req.logout()`, destroy session, clear cookie
+- [x] `POST /account/wipe` — remove Vizably files from attached storage
+- [x] `POST /account/delete-repository` — optional GitHub repo delete after wipe
 - [x] **No frontend import** (`PROVIDERS` not used here)
 - [x] `module.exports = makeAuthRouter`
 

@@ -175,11 +175,12 @@ function createMockGitHubClient(initial = {}) {
 
           if (path === 'scans') {
             const scanFiles = Object.keys(files)
-              .filter((p) => p.startsWith('scans/') && !p.endsWith('index.json'))
+              .filter((p) => p.startsWith('scans/'))
               .map((p) => ({
                 name: p.replace('scans/', ''),
                 type: 'file',
                 path: p,
+                sha: files[p].sha,
               }));
             if (scanFiles.length === 0) {
               const err = new Error('Not Found');
@@ -1139,5 +1140,100 @@ test('getScanById returns not found for unknown id', async () => {
         { githubClient: client },
       ),
     (err) => err.code === 'SCAN_NOT_FOUND' && err.status === 404,
+  );
+});
+
+test('wipeAccountStore removes Vizably files and leaves unrelated root files', async () => {
+  const storageService = new StorageService();
+  const client = createMockGitHubClient({
+    files: {
+      'vizably.json': {
+        content: JSON.stringify(manifest()),
+        sha: 'sha-manifest',
+      },
+      'README.md': { content: '# keep me\n', sha: 'sha-readme' },
+      'scans/index.json': {
+        content: JSON.stringify({ schemaVersion: 1, scans: [] }),
+        sha: 'sha-index',
+      },
+      'scans/abc_example.com.json': {
+        content: JSON.stringify({
+          id: 'abc',
+          url: 'https://example.com',
+          result: { problems: {} },
+        }),
+        sha: 'sha-scan',
+      },
+    },
+  });
+
+  const result = await storageService.wipeAccountStore('github', STORAGE_REF, {
+    githubClient: client,
+  });
+
+  assert.equal(result.wiped, true);
+  assert.ok(result.pathsRemoved.includes('vizably.json'));
+  assert.ok(result.pathsRemoved.includes('scans/index.json'));
+  assert.ok(result.pathsRemoved.includes('scans/abc_example.com.json'));
+  assert.equal(client.files['vizably.json'], undefined);
+  assert.equal(client.files['scans/index.json'], undefined);
+  assert.equal(client.files['scans/abc_example.com.json'], undefined);
+  assert.equal(client.files['README.md'].content, '# keep me\n');
+});
+
+test('wipeAccountStore is idempotent when the store is already empty', async () => {
+  const storageService = new StorageService();
+  const client = createMockGitHubClient({
+    files: {
+      'README.md': { content: '# only\n', sha: 'sha-readme' },
+    },
+  });
+
+  const result = await storageService.wipeAccountStore('github', STORAGE_REF, {
+    githubClient: client,
+  });
+
+  assert.equal(result.wiped, true);
+  assert.deepEqual(result.pathsRemoved, []);
+  assert.equal(client.files['README.md'].content, '# only\n');
+});
+
+test('wipeAccountStore stubs google until Phase 3', async () => {
+  const storageService = new StorageService();
+  await assert.rejects(
+    () => storageService.wipeAccountStore('google', STORAGE_REF, {}),
+    (err) => err.status === 501 && /Phase 3/.test(err.message),
+  );
+});
+
+test('deleteGitHubRepository deletes via the user client', async () => {
+  const storageService = new StorageService();
+  const client = createMockGitHubClient();
+  const result = await storageService.deleteGitHubRepository(STORAGE_REF, {
+    githubUserClient: client,
+  });
+  assert.equal(result.deleted, true);
+  assert.equal(result.full_name, STORAGE_REF.full_name);
+});
+
+test('deleteGitHubRepository maps Administration 403 to REPO_DELETE_FORBIDDEN', async () => {
+  const storageService = new StorageService();
+  const forbidden = new Error('Resource not accessible by integration');
+  forbidden.status = 403;
+  forbidden.response = {
+    data: { message: 'Resource not accessible by integration' },
+  };
+  const client = createMockGitHubClient({ deleteRepoError: forbidden });
+  await assert.rejects(
+    () =>
+      storageService.deleteGitHubRepository(STORAGE_REF, {
+        githubUserClient: client,
+      }),
+    (err) => {
+      assert.equal(err.code, 'REPO_DELETE_FORBIDDEN');
+      assert.equal(err.status, 403);
+      assert.match(err.message, /Administration/i);
+      return true;
+    },
   );
 });
