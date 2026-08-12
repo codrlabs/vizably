@@ -38,8 +38,8 @@ export default function DashboardView({ onNav, onOpen, onDelete, saved, provider
 
     return (
       <div
-        role="button"
-        tabIndex={0}
+        role={confirming ? undefined : 'button'}
+        tabIndex={confirming ? undefined : 0}
         onClick={() => { if (!confirming && !busy) onOpen(s) }}
         onKeyDown={(e) => {
           if (confirming || busy) return
