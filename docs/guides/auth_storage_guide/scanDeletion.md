@@ -428,15 +428,15 @@ When the code lands:
 
 ## 11. Acceptance checklist (closes #112)
 
-- [ ] Dashboard has a Delete action per scan (with confirm).
-- [ ] Delete removes only that scan’s file from attached storage.
-- [ ] Other scans, account identity, and the repository remain.
-- [ ] `index.json` / `scanCount` update (or heal on next load).
-- [ ] `DELETE /api/scans/:id` auth-gated; returns updated `{ scanCount, scans }`.
-- [ ] Session stores `scanCount` only (not the full scans array).
-- [ ] Google remains explicitly stubbed (501) until Phase 3.
-- [ ] Backend + frontend tests cover happy path, 404, and “delete doesn’t open”.
-- [ ] Docs/API table updated.
+- [x] Dashboard has a Delete action per scan (with confirm).
+- [x] Delete removes only that scan’s file from attached storage.
+- [x] Other scans, account identity, and the repository remain.
+- [x] `index.json` / `scanCount` update (or heal on next load).
+- [x] `DELETE /api/scans/:id` auth-gated; returns updated `{ scanCount, scans }`.
+- [x] Session stores `scanCount` only (not the full scans array).
+- [x] Google remains explicitly stubbed (501) until Phase 3.
+- [x] Backend + frontend tests cover happy path, 404, and “delete doesn’t open”.
+- [x] Docs/API table updated.
 
 When the checklist is green and the PR is merged, close
 [#112](https://github.com/codrlabs/vizably/issues/112).

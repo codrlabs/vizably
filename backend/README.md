@@ -225,6 +225,7 @@ See also [`docs/guides/auth_storage_guide/githubGoogleAuthStorageImplementation.
 | GET    | `/api/scan-results?url=`  | re-run a scan for a URL (used by deep links)   |
 | GET    | `/api/scans`              | list saved scans from the user's store         |
 | GET    | `/api/scans/:id`          | load one saved report from the user's store    |
+| DELETE | `/api/scans/:id`          | delete one saved report from the user's store  |
 | GET    | `/api/problems/:id`       | look up a single problem (legacy mock lookup)  |
 
 Every backend path lives under `/api` so one serverless function can claim the
