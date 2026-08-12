@@ -4,6 +4,7 @@
  *   - GET  /api/scan-results
  *   - GET  /api/scans
  *   - GET  /api/scans/:id
+ *   - DELETE /api/scans/:id
  *
  * Only knows about HTTP shape. All logic lives in ScanController.
  *
@@ -21,6 +22,7 @@ function makeScanRouter(controller) {
   router.get('/scan-results', controller.getScanResults);
   router.get('/scans', controller.getSavedScans);
   router.get('/scans/:id', controller.getSavedScan);
+  router.delete('/scans/:id', controller.deleteSavedScan);
   return router;
 }
 

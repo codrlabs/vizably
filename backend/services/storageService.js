@@ -790,6 +790,156 @@ class StorageService {
   }
 
   /**
+   * Delete one immutable saved scan by id and refresh index/manifest caches.
+   * @param {object} account session user (with storage binding)
+   * @param {string} scanId
+   * @param {StorageClients} clients
+   * @returns {Promise<{ deletedId: string, path: string, scanCount: number, scans: object[] }>}
+   */
+  async deleteScanById(account, scanId, clients) {
+    if (account?.storage?.provider === 'google') {
+      const err = new Error(GOOGLE_NOT_AVAILABLE);
+      err.status = 501;
+      err.code = 'PROVIDER_NOT_AVAILABLE';
+      throw err;
+    }
+    if (!clients.githubClient) {
+      throw new Error('GitHub client is required to delete a saved scan');
+    }
+    if (!scanId || typeof scanId !== 'string') {
+      const err = new Error('Scan id is required');
+      err.status = 400;
+      err.code = 'SCAN_ID_REQUIRED';
+      throw err;
+    }
+
+    const maxAttempts = 3;
+    for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
+      try {
+        return await this._deleteScanByIdOnce(account, scanId, clients);
+      } catch (err) {
+        const canRetry = this._isRefConflict(err) && attempt < maxAttempts - 1;
+        if (!canRetry) {
+          throw err;
+        }
+      }
+    }
+
+    throw new Error('GitHub write failed after retries');
+  }
+
+  /**
+   * @param {object} account
+   * @param {string} scanId
+   * @param {StorageClients} clients
+   * @private
+   */
+  async _deleteScanByIdOnce(account, scanId, clients) {
+    const storageRef = account.storageRef ?? account.storage;
+    const { owner, repo } = this._parseGitHubRef(storageRef);
+    const octokit = clients.githubClient;
+    const branch = await this._resolveGitHubBranch(
+      octokit,
+      owner,
+      repo,
+      storageRef.branch,
+    );
+
+    const scanEntries = await this._listGitHubDirectory(
+      octokit,
+      owner,
+      repo,
+      SCANS_DIR,
+      branch,
+    );
+    const match = scanEntries.find(
+      (entry) =>
+        entry.type === 'file' &&
+        entry.name.startsWith(`${scanId}_`) &&
+        entry.name.endsWith('.json') &&
+        entry.name !== 'index.json',
+    );
+
+    if (!match) {
+      const err = new Error('Scan not found');
+      err.status = 404;
+      err.code = 'SCAN_NOT_FOUND';
+      throw err;
+    }
+
+    const scanPath = `${SCANS_DIR}/${match.name}`;
+    const fileData = await this._readGitHubFile(
+      octokit,
+      owner,
+      repo,
+      scanPath,
+      branch,
+    );
+    if (!fileData) {
+      const err = new Error('Scan not found');
+      err.status = 404;
+      err.code = 'SCAN_NOT_FOUND';
+      throw err;
+    }
+
+    const manifestFile = await this._readAccountManifest(octokit, owner, repo, branch);
+    if (!manifestFile) {
+      throw new Error('Account manifest not found');
+    }
+
+    const { manifest } = this._normalizeManifestBrand(
+      this._parseJson(manifestFile.content, 'manifest'),
+    );
+    const { index } = await this._reconcileGitHubIndex(octokit, owner, repo, branch);
+    index.scans = index.scans.filter((entry) => entry.id !== scanId);
+
+    const updatedManifest = this._updateManifestSummary(
+      manifest,
+      index,
+      index.scans[0]?.scannedAt,
+    );
+    if (index.scans.length === 0) {
+      updatedManifest.summary.lastScanAt = null;
+    }
+    updatedManifest.account.updatedAt = new Date().toISOString();
+
+    const indexFile = await this._readGitHubFile(octokit, owner, repo, INDEX_PATH, branch);
+    const host = match.name.slice(scanId.length + 1).replace(/\.json$/, '');
+
+    await this._writeGitHubFiles(
+      octokit,
+      owner,
+      repo,
+      branch,
+      [
+        {
+          path: scanPath,
+          delete: true,
+          sha: fileData.sha || match.sha,
+        },
+        {
+          path: INDEX_PATH,
+          content: JSON.stringify(index, null, 2) + '\n',
+          sha: indexFile?.sha,
+        },
+        {
+          path: MANIFEST_PATH,
+          content: JSON.stringify(updatedManifest, null, 2) + '\n',
+          ...(manifestFile.path === MANIFEST_PATH ? { sha: manifestFile.sha } : {}),
+        },
+      ],
+      `Delete accessibility scan for ${host || scanId}`,
+    );
+
+    return {
+      deletedId: scanId,
+      path: scanPath,
+      scanCount: index.scans.length,
+      scans: index.scans,
+    };
+  }
+
+  /**
    * One save attempt: reconcile from scan-file truth, append prepared scan, write.
    * @param {object} account
    * @param {object} prepared from `_prepareScanWrite`
@@ -1336,24 +1486,30 @@ class StorageService {
    * Contents API when the Git Database API is unavailable. Conflicts bubble up
    * so callers (e.g. saveScanResults) can re-reconcile against scan truth —
    * never rewrite caches with a refreshed sha and stale content.
+   *
+   * Batches that include deletes skip the Git Database API and use Contents
+   * `deleteFile` — createTree + sha:null is unreliable on real GitHub.
    * @private
    */
   async _writeGitHubFiles(octokit, owner, repo, branch, files, message) {
-    try {
-      return await this._writeGitHubFilesViaGit(
-        octokit,
-        owner,
-        repo,
-        branch,
-        files,
-        message,
-      );
-    } catch (err) {
-      if (!this._shouldFallbackToContentsApi(err)) {
-        throw Object.assign(new Error(this._formatGitHubStorageError(err)), {
-          status: err?.status,
-          cause: err,
-        });
+    const hasDeletes = files.some((file) => Boolean(file.delete));
+    if (!hasDeletes) {
+      try {
+        return await this._writeGitHubFilesViaGit(
+          octokit,
+          owner,
+          repo,
+          branch,
+          files,
+          message,
+        );
+      } catch (err) {
+        if (!this._shouldFallbackToContentsApi(err)) {
+          throw Object.assign(new Error(this._formatGitHubStorageError(err)), {
+            status: err?.status,
+            cause: err,
+          });
+        }
       }
     }
 
@@ -1486,6 +1642,22 @@ class StorageService {
           : `${message} (${i + 1}/${files.length})`;
 
       try {
+        if (file.delete) {
+          if (!sha) {
+            continue;
+          }
+          const { data } = await octokit.rest.repos.deleteFile({
+            owner,
+            repo,
+            path: file.path,
+            message: fileMessage,
+            sha,
+            branch,
+          });
+          lastCommit = data.commit;
+          continue;
+        }
+
         const { data } = await octokit.rest.repos.createOrUpdateFileContents({
           owner,
           repo,

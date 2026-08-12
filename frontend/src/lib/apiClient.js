@@ -211,6 +211,17 @@ export class ApiClient {
   }
 
   /**
+   * Delete one saved scan from attached storage.
+   * @param {string} scanId
+   * @returns {Promise<{ scanCount: number, scans: object[] }>}
+   */
+  deleteScan(scanId) {
+    return this._request(`/api/scans/${encodeURIComponent(scanId)}`, {
+      method: 'DELETE',
+    })
+  }
+
+  /**
    * Look up a single problem by id.
    * @param {string} id
    * @returns {Promise<Problem>}

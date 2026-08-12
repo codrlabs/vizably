@@ -284,6 +284,21 @@ function AppRoutes() {
     navigate(`${PATHS.results}?scanId=${encodeURIComponent(s.id)}`)
   }
 
+  /** Remove one saved scan from attached storage and refresh the dashboard list. */
+  const deleteSaved = async (s) => {
+    if (!s?.id) return
+    const result = await apiClient.deleteScan(s.id)
+    setUser((prev) => mergeAccountUpdate(prev, {
+      scanCount: result.scanCount,
+      scans: result.scans,
+    }))
+    if (location.search.includes(`scanId=${encodeURIComponent(s.id)}`)) {
+      setScan(null)
+      setProblem(null)
+      navigate(PATHS.dashboard)
+    }
+  }
+
   const auth = (p) => {
     if (p === 'google') return
     apiClient.githubLogin()
@@ -372,6 +387,7 @@ function AppRoutes() {
               <DashboardView
                 onNav={nav}
                 onOpen={openSaved}
+                onDelete={deleteSaved}
                 saved={savedScans}
                 provider={provider}
                 user={shellUser}
