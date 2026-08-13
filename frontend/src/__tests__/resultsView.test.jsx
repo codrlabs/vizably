@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest'
-import { render, screen, fireEvent } from '@testing-library/react'
+import { render, screen, fireEvent, waitFor } from '@testing-library/react'
 import ResultsView from '../views/ResultsView'
 import { toScanViewModel } from '../lib/scanAdapter'
 import { scanResultFixture } from './fixtures/scanResult'
@@ -37,5 +37,29 @@ describe('ResultsView', () => {
 
     fireEvent.click(screen.getByText('Images must have alternate text'))
     expect(onOpenProblem).toHaveBeenCalledWith(expect.objectContaining({ id: 'image-alt' }))
+  })
+
+  it('hides delete when there is no saved scan id', () => {
+    render(<ResultsView data={vm} onOpenProblem={() => {}} onDelete={vi.fn()} />)
+    expect(screen.queryByRole('button', { name: /delete scan/i })).not.toBeInTheDocument()
+  })
+
+  it('confirms before deleting a saved scan', async () => {
+    const onDelete = vi.fn().mockResolvedValue(undefined)
+    render(
+      <ResultsView
+        data={vm}
+        onOpenProblem={() => {}}
+        scanId="scan-1"
+        onDelete={onDelete}
+      />,
+    )
+
+    fireEvent.click(screen.getByRole('button', { name: /delete scan/i }))
+    expect(screen.getByText(/delete this saved scan/i)).toBeInTheDocument()
+    expect(onDelete).not.toHaveBeenCalled()
+
+    fireEvent.click(screen.getByRole('button', { name: /yes, delete/i }))
+    await waitFor(() => expect(onDelete).toHaveBeenCalledWith({ id: 'scan-1' }))
   })
 })

@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest'
-import { render, screen, fireEvent } from '@testing-library/react'
+import { render, screen, fireEvent, waitFor } from '@testing-library/react'
 import DashboardView from '../views/DashboardView'
 
 const SAVED = [
@@ -76,5 +76,48 @@ describe('DashboardView', () => {
     const row = screen.getByText('other.org').closest('[role="button"]')
     fireEvent.keyDown(row, { key: 'Enter' })
     expect(onOpen).toHaveBeenCalledWith(SAVED[1])
+  })
+
+  it('asks for confirm before delete and does not open the scan', async () => {
+    const onOpen = vi.fn()
+    const onDelete = vi.fn().mockResolvedValue(undefined)
+    render(
+      <DashboardView
+        onNav={vi.fn()}
+        onOpen={onOpen}
+        onDelete={onDelete}
+        saved={SAVED}
+        provider="github"
+        user={{ email: 'sam@example.com' }}
+        storage={{ full_name: 'sam/vizably-scans' }}
+      />,
+    )
+
+    fireEvent.click(screen.getByRole('button', { name: /delete scan example.com/i }))
+    expect(onOpen).not.toHaveBeenCalled()
+    expect(screen.getByText(/delete this scan/i)).toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('button', { name: /yes, delete/i }))
+    await waitFor(() => expect(onDelete).toHaveBeenCalledWith(SAVED[0]))
+    expect(onOpen).not.toHaveBeenCalled()
+  })
+
+  it('cancel leaves the list alone without calling onDelete', () => {
+    const onDelete = vi.fn()
+    render(
+      <DashboardView
+        onNav={vi.fn()}
+        onOpen={vi.fn()}
+        onDelete={onDelete}
+        saved={SAVED}
+        provider="github"
+        user={{ email: 'sam@example.com' }}
+      />,
+    )
+
+    fireEvent.click(screen.getByRole('button', { name: /delete scan example.com/i }))
+    fireEvent.click(screen.getByRole('button', { name: /cancel/i }))
+    expect(onDelete).not.toHaveBeenCalled()
+    expect(screen.queryByText(/delete this scan/i)).not.toBeInTheDocument()
   })
 })
