@@ -246,3 +246,49 @@ test('getInstallationClientForRepo requires storageRef.id', async () => {
   );
   assert.equal(reposGetCalled, false);
 });
+
+test('_findInstallationIdForRepo paginates user installations and repos', async () => {
+  const authService = new AuthService({
+    sessionSecret: TEST_SESSION_SECRET,
+    encryptionKey: TEST_ENCRYPTION_KEY,
+  });
+
+  const installations = Array.from({ length: 101 }, (_, i) => ({ id: i + 1 }));
+  const reposForTarget = Array.from({ length: 101 }, (_, i) => ({
+    full_name: i === 100 ? 'sam/site-audits' : `sam/other-${i}`,
+  }));
+  const calls = { installations: [], repos: [] };
+
+  const userOctokit = {
+    rest: {
+      apps: {
+        listInstallationsForAuthenticatedUser: async ({ page = 1, per_page = 100 } = {}) => {
+          calls.installations.push({ page, per_page });
+          const start = (page - 1) * per_page;
+          return {
+            data: { installations: installations.slice(start, start + per_page) },
+          };
+        },
+        listInstallationReposForAuthenticatedUser: async ({
+          installation_id,
+          page = 1,
+          per_page = 100,
+        }) => {
+          calls.repos.push({ installation_id, page, per_page });
+          if (installation_id !== 101) {
+            return { data: { repositories: [] } };
+          }
+          const start = (page - 1) * per_page;
+          return {
+            data: { repositories: reposForTarget.slice(start, start + per_page) },
+          };
+        },
+      },
+    },
+  };
+
+  const id = await authService._findInstallationIdForRepo(userOctokit, 'sam/site-audits');
+  assert.equal(id, 101);
+  assert.equal(calls.installations.length, 2);
+  assert.ok(calls.repos.some((c) => c.installation_id === 101 && c.page === 2));
+});

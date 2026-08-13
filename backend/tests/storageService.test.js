@@ -76,16 +76,18 @@ function createMockGitHubClient(initial = {}) {
         }),
       },
       repos: {
-        listForAuthenticatedUser: async () => ({
-          data: [
+        listForAuthenticatedUser: async ({ page = 1, per_page = 100 } = {}) => {
+          const all = initial.listedRepos ?? [
             {
               node_id: STORAGE_REF.id,
               full_name: STORAGE_REF.full_name,
               private: true,
               html_url: STORAGE_REF.html_url,
             },
-          ],
-        }),
+          ];
+          const start = (page - 1) * per_page;
+          return { data: all.slice(start, start + per_page) };
+        },
         get: async (args) => {
           if (typeof initial.repoGet === 'function') {
             return initial.repoGet(args);
@@ -271,28 +273,36 @@ function createMockGitHubClient(initial = {}) {
       },
       apps: installationProbe || initial.installationProbeError
         ? {
-            listInstallationsForAuthenticatedUser: async () => {
+            listInstallationsForAuthenticatedUser: async ({ page = 1, per_page = 100 } = {}) => {
               if (initial.installationProbeError) {
                 throw initial.installationProbeError;
               }
+              const all = (installationProbe ?? []).map((entry) => ({
+                id: entry.id,
+                permissions: { contents: entry.contents },
+                repository_selection: entry.repository_selection || 'selected',
+              }));
+              const start = (page - 1) * per_page;
               return {
                 data: {
-                  installations: (installationProbe ?? []).map((entry) => ({
-                    id: entry.id,
-                    permissions: { contents: entry.contents },
-                    repository_selection: entry.repository_selection || 'selected',
-                  })),
+                  installations: all.slice(start, start + per_page),
                 },
               };
             },
-            listInstallationReposForAuthenticatedUser: async ({ installation_id }) => {
+            listInstallationReposForAuthenticatedUser: async ({
+              installation_id,
+              page = 1,
+              per_page = 100,
+            }) => {
               if (initial.installationReposError) {
                 throw initial.installationReposError;
               }
               const entry = (installationProbe ?? []).find((item) => item.id === installation_id);
+              const all = (entry?.repos ?? []).map((full_name) => ({ full_name }));
+              const start = (page - 1) * per_page;
               return {
                 data: {
-                  repositories: (entry?.repos ?? []).map((full_name) => ({ full_name })),
+                  repositories: all.slice(start, start + per_page),
                 },
               };
             },
@@ -309,6 +319,22 @@ test('listGitHubRepos maps node id and repo metadata', async () => {
   assert.equal(repos.length, 1);
   assert.equal(repos[0].id, STORAGE_REF.id);
   assert.equal(repos[0].full_name, STORAGE_REF.full_name);
+});
+
+test('listGitHubRepos paginates beyond the first 100 repos', async () => {
+  const storageService = new StorageService();
+  const listedRepos = Array.from({ length: 105 }, (_, i) => ({
+    node_id: `R_${i}`,
+    full_name: `sam/repo-${i}`,
+    private: true,
+    html_url: `https://github.com/sam/repo-${i}`,
+  }));
+  const client = createMockGitHubClient({ listedRepos });
+  const repos = await storageService.listGitHubRepos(client);
+  assert.equal(repos.length, 105);
+  assert.equal(repos[0].full_name, 'sam/repo-0');
+  assert.equal(repos[104].full_name, 'sam/repo-104');
+  assert.equal(repos[104].id, 'R_104');
 });
 
 test('checkGitHubRepoNameAvailability returns available on 404', async () => {
@@ -406,6 +432,40 @@ test('createGitHubRepository skips install hop when installation covers all repo
       },
     ],
   });
+  const result = await storageService.createGitHubRepository('vizably-new', {
+    githubUserClient: client,
+  });
+  assert.equal(result.needsInstall, false);
+});
+
+test('createGitHubRepository finds writable install when repo is past first page', async () => {
+  const storageService = new StorageService();
+  const repos = Array.from({ length: 101 }, (_, i) =>
+    i === 100 ? 'sam/vizably-new' : `sam/other-${i}`,
+  );
+  const client = createMockGitHubClient({
+    installationProbe: [
+      {
+        id: 1,
+        contents: 'write',
+        repos,
+      },
+    ],
+  });
+  const result = await storageService.createGitHubRepository('vizably-new', {
+    githubUserClient: client,
+  });
+  assert.equal(result.needsInstall, false);
+});
+
+test('createGitHubRepository finds writable install when installation is past first page', async () => {
+  const storageService = new StorageService();
+  const installationProbe = Array.from({ length: 101 }, (_, i) => ({
+    id: i + 1,
+    contents: 'write',
+    repos: i === 100 ? ['sam/vizably-new'] : [`sam/other-${i}`],
+  }));
+  const client = createMockGitHubClient({ installationProbe });
   const result = await storageService.createGitHubRepository('vizably-new', {
     githubUserClient: client,
   });
@@ -607,6 +667,30 @@ test('validateStorage probes write access with user client when IO uses installa
     githubUserClient: userClient,
   });
   assert.equal(result.status, 'initializable');
+  assert.equal(result.capabilities.canWrite, true);
+});
+
+test('validateStorage finds App write access when repo is past first install page', async () => {
+  const storageService = new StorageService();
+  const repos = Array.from({ length: 101 }, (_, i) =>
+    i === 100 ? STORAGE_REF.full_name : `sam/other-${i}`,
+  );
+  const client = createMockGitHubClient({
+    repoMeta: { permissions: { pull: true, push: false, admin: false } },
+    installationProbe: [
+      {
+        id: 1,
+        contents: 'write',
+        repos,
+      },
+    ],
+  });
+  const result = await storageService.validateStorage('github', STORAGE_REF, {
+    githubClient: client,
+    githubUserClient: client,
+  });
+  assert.equal(result.status, 'initializable');
+  assert.equal(result.capabilities.canRead, true);
   assert.equal(result.capabilities.canWrite, true);
 });
 

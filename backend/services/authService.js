@@ -16,6 +16,7 @@ const cookieSession = require('cookie-session');
 const passport = require('passport');
 const GitHubStrategy = require('passport-github2').Strategy;
 const { Octokit } = require('@octokit/rest');
+const { collectAllGitHubPages, findInGitHubPages } = require('./githubPagination');
 
 const GOOGLE_NOT_AVAILABLE = 'Google auth is not available until Phase 3';
 
@@ -131,18 +132,29 @@ class AuthService {
       }
     }
 
-    const { data } = await userOctokit.rest.apps.listInstallationsForAuthenticatedUser({
-      per_page: 100,
+    const installations = await collectAllGitHubPages(async (page, perPage) => {
+      const { data } = await userOctokit.rest.apps.listInstallationsForAuthenticatedUser({
+        per_page: perPage,
+        page,
+      });
+      return data.installations ?? [];
     });
 
-    for (const installation of data.installations ?? []) {
-      const { data: reposData } =
-        await userOctokit.rest.apps.listInstallationReposForAuthenticatedUser({
-          installation_id: installation.id,
-          per_page: 100,
-        });
+    for (const installation of installations) {
+      const matched = await findInGitHubPages(
+        async (page, perPage) => {
+          const { data: reposData } =
+            await userOctokit.rest.apps.listInstallationReposForAuthenticatedUser({
+              installation_id: installation.id,
+              per_page: perPage,
+              page,
+            });
+          return reposData.repositories ?? [];
+        },
+        (entry) => entry.full_name === fullName,
+      );
 
-      if (reposData.repositories?.some((entry) => entry.full_name === fullName)) {
+      if (matched) {
         return installation.id;
       }
     }
