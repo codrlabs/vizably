@@ -1,0 +1,48 @@
+name: Deploy
+
+# Tests decide whether anything ships. The deploy job does not start unless
+# the whole suite is green, and Vercel's own Git integration is switched off
+# in vercel.json so this workflow is the only thing that can deploy.
+on:
+  push:
+    branches: [main]
+  # A manual button, for redeploying without a new commit.
+  workflow_dispatch:
+
+# Never let two deploys race; a newer commit supersedes an in-flight one.
+concurrency:
+  group: deploy-production
+  cancel-in-progress: false
+
+jobs:
+  test:
+    name: Tests
+    uses: ./.github/workflows/test.yml
+
+  deploy:
+    name: Deploy to Vercel
+    needs: test
+    runs-on: ubuntu-latest
+    environment: production
+    env:
+      VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+      VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Install Vercel CLI
+        run: npm install --global vercel@latest
+
+      - name: Pull project settings and environment
+        # Fetches the env vars set in Vercel project settings. Runtime secrets
+        # live there, never in this repo and never in GitHub secrets.
+        run: vercel pull --yes --environment=production --token=${{ secrets.VERCEL_TOKEN }}
+
+      - name: Build
+        # Runs installCommand and buildCommand from vercel.json, producing the
+        # same output the platform would build itself.
+        run: vercel build --prod --token=${{ secrets.VERCEL_TOKEN }}
+
+      - name: Deploy
+        # --prebuilt uploads the output above instead of rebuilding remotely.
+        run: vercel deploy --prebuilt --prod --token=${{ secrets.VERCEL_TOKEN }}

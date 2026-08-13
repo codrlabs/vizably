@@ -7,6 +7,9 @@ dist-ssr/
 build/
 *.tsbuildinfo
 
+# Vercel project linkage (written by `vercel link` / `vercel dev`)
+.vercel/
+
 # Environment and secrets
 .env
 .env.*

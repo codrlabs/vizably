@@ -1,21 +1,117 @@
-import { Badge, Card, ProblemRow, ScoreDial, SeverityBadge } from '../design-system'
+import { useState } from 'react'
+import { Badge, Button, Card, ProblemRow, ScoreDial, SeverityBadge } from '../design-system'
 import { Ico } from '../lib/icons'
 
 /** Results view — score summary + category sections + what's good. */
-export default function ResultsView({ data, onOpenProblem }) {
+export default function ResultsView({ data, onOpenProblem, scanId, onDelete }) {
   const total = data.categories.reduce((n, c) => n + c.problems.length, 0)
+  const canDelete = Boolean(scanId && onDelete)
+  const [confirming, setConfirming] = useState(false)
+  const [deleting, setDeleting] = useState(false)
+  const [deleteError, setDeleteError] = useState(null)
+
+  const handleDelete = async () => {
+    if (!canDelete || deleting) return
+    setDeleteError(null)
+    setDeleting(true)
+    try {
+      await onDelete({ id: scanId })
+    } catch (err) {
+      setDeleteError(err?.message || 'Failed to delete this scan')
+      setDeleting(false)
+    }
+  }
 
   return (
     <div style={{ width: '100%', maxWidth: 880, margin: '0 auto', padding: '36px 24px 64px' }}>
       {/* Summary */}
-      <div data-noprint style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, marginBottom: 6 }}>
+      <div data-noprint style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, marginBottom: 6, flexWrap: 'wrap' }}>
         <div style={{ font: 'var(--font-label)', color: 'var(--accent)', letterSpacing: '0.08em', textTransform: 'uppercase', fontSize: 'var(--text-xs)' }}>Scan complete</div>
-        <button onClick={() => window.print()} style={{
-          display: 'inline-flex', alignItems: 'center', gap: 7, padding: '7px 14px',
-          borderRadius: 'var(--radius-md)', border: '1px solid var(--border-strong)', background: 'var(--surface-card)',
-          font: 'var(--font-label)', color: 'var(--text-strong)', cursor: 'pointer',
-        }}>{Ico('Download', 16)} Download PDF</button>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+          {canDelete && !confirming && (
+            <Button
+              variant="secondary"
+              size="sm"
+              iconLeft={Ico('Trash2', 15, 'currentColor')}
+              onClick={() => {
+                setDeleteError(null)
+                setConfirming(true)
+              }}
+              style={{
+                color: 'var(--sev-critical)',
+                borderColor: 'color-mix(in srgb, var(--sev-critical) 40%, var(--border-strong))',
+                background: 'color-mix(in srgb, var(--sev-critical) 8%, var(--surface-card))',
+              }}
+            >
+              Delete scan
+            </Button>
+          )}
+          <button onClick={() => window.print()} style={{
+            display: 'inline-flex', alignItems: 'center', gap: 7, padding: '7px 14px',
+            borderRadius: 'var(--radius-md)', border: '1px solid var(--border-strong)', background: 'var(--surface-card)',
+            font: 'var(--font-label)', color: 'var(--text-strong)', cursor: 'pointer',
+          }}>{Ico('Download', 16)} Download PDF</button>
+        </div>
       </div>
+
+      {canDelete && confirming && (
+        <div
+          data-noprint
+          role="region"
+          aria-label="Confirm delete scan"
+          style={{
+            marginBottom: 16,
+            padding: '14px 16px',
+            borderRadius: 'var(--radius-md)',
+            border: '1px solid color-mix(in srgb, var(--sev-critical) 35%, var(--border-subtle))',
+            background: 'color-mix(in srgb, var(--sev-critical) 7%, var(--surface-card))',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            gap: 14,
+            flexWrap: 'wrap',
+          }}
+        >
+          <div style={{ display: 'flex', gap: 12, alignItems: 'flex-start', minWidth: 0, flex: 1 }}>
+            <span style={{
+              flexShrink: 0, width: 34, height: 34, borderRadius: 'var(--radius-sm)',
+              display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+              background: 'color-mix(in srgb, var(--sev-critical) 14%, transparent)',
+              color: 'var(--sev-critical)',
+            }}>
+              {Ico('Trash2', 16, 'currentColor')}
+            </span>
+            <div style={{ minWidth: 0 }}>
+              <div style={{ font: 'var(--font-label)', color: 'var(--text-strong)', marginBottom: 3 }}>
+                Delete this saved scan?
+              </div>
+              <p style={{ fontSize: 'var(--text-sm)', color: 'var(--text-muted)', margin: 0, lineHeight: 1.45 }}>
+                Removes it from your storage. Other scans stay. GitHub history may still retain it.
+              </p>
+              {deleteError && (
+                <p role="alert" style={{ fontSize: 'var(--text-sm)', color: 'var(--sev-critical)', margin: '8px 0 0', lineHeight: 1.45 }}>
+                  {deleteError}
+                </p>
+              )}
+            </div>
+          </div>
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+            <Button variant="ghost" size="sm" disabled={deleting} onClick={() => setConfirming(false)}>
+              Keep scan
+            </Button>
+            <Button
+              variant="danger"
+              size="sm"
+              disabled={deleting}
+              iconLeft={Ico('Trash2', 14, '#fff')}
+              onClick={handleDelete}
+            >
+              {deleting ? 'Deleting…' : 'Yes, delete'}
+            </Button>
+          </div>
+        </div>
+      )}
+
       <Card style={{ display: 'flex', alignItems: 'center', gap: 28, marginBottom: 32, flexWrap: 'wrap' }}>
         <ScoreDial value={data.score} size={120} />
         <div style={{ flex: 1, minWidth: 260 }}>

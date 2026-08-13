@@ -1,9 +1,12 @@
 /**
  * Problem-detail routes:
- *   - GET /problems/:id
+ *   - GET /api/problems/:id
  *
- * In Phase 3 this will likely move under /api/problems/:id and gain
- * a richer per-violation payload from axe-core.
+ * Everything the backend serves lives under /api so a single serverless
+ * function can claim that prefix; a bare /problems would be taken by the
+ * static SPA fallback and never reach the server.
+ *
+ * May gain a richer per-violation payload from axe-core later.
  */
 const { Router } = require('express');
 

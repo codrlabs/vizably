@@ -191,6 +191,17 @@ export class ApiClient {
   }
 
   /**
+   * List the saved scans held in the user's attached storage.
+   *
+   * The list is not carried on the session — it grows with every scan and
+   * the session has to fit in a cookie — so it is fetched on demand.
+   * @returns {Promise<{ scanCount: number, scans: object[] }>}
+   */
+  listScans() {
+    return this._request('/api/scans')
+  }
+
+  /**
    * Load a saved historical report by scan id from attached storage.
    * @param {string} scanId
    * @returns {Promise<{ id: string, url: string, scannedAt: string | null, result: ScanResult }>}
@@ -200,12 +211,23 @@ export class ApiClient {
   }
 
   /**
+   * Delete one saved scan from attached storage.
+   * @param {string} scanId
+   * @returns {Promise<{ scanCount: number, scans: object[] }>}
+   */
+  deleteScan(scanId) {
+    return this._request(`/api/scans/${encodeURIComponent(scanId)}`, {
+      method: 'DELETE',
+    })
+  }
+
+  /**
    * Look up a single problem by id.
    * @param {string} id
    * @returns {Promise<Problem>}
    */
   getProblem(id) {
-    return this._request(`/problems/${encodeURIComponent(id)}`)
+    return this._request(`/api/problems/${encodeURIComponent(id)}`)
   }
 }
 

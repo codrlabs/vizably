@@ -11,7 +11,7 @@ if (!process.env.ENCRYPTION_KEY) {
   throw new Error('ENCRYPTION_KEY is required');
 }
 
-const buildApp = require('./app');
+const { buildApp } = require('./app');
 
 const PORT = process.env.PORT || 3000;
 
