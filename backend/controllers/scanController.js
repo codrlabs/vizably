@@ -29,6 +29,8 @@ class ScanController {
     this.postScan = this.postScan.bind(this);
     this.getScanResults = this.getScanResults.bind(this);
     this.getSavedScan = this.getSavedScan.bind(this);
+    this.getSavedScans = this.getSavedScans.bind(this);
+    this.deleteSavedScan = this.deleteSavedScan.bind(this);
     this.getProblem = this.getProblem.bind(this);
   }
 
@@ -67,14 +69,16 @@ class ScanController {
              clients,
            );
            if (saved?.scans) {
+             // The scan list itself is deliberately not kept on the session —
+             // it grows without bound and the session has to fit in a cookie.
+             // `index.json` in the user's store is the source of truth; the
+             // client refetches it from GET /api/scans.
              if (!req.user.account) {
                req.user.account = {
                  settings: { autoDelete90d: true },
                  scanCount: 0,
-                 scans: [],
                };
              }
-             req.user.account.scans = saved.scans;
              req.user.account.scanCount = saved.scanCount;
              await this.authService.persistUser(req);
              accountUpdate = {
@@ -158,6 +162,115 @@ class ScanController {
       if (err.code === 'SCAN_NOT_FOUND' || err.status === 404) {
         return res.status(404).json({ error: 'Scan not found' });
       }
+      if (
+        err.code === 'STORAGE_ACCESS_DENIED' ||
+        err.code === 'STORAGE_IDENTITY_MISMATCH' ||
+        err.status === 403
+      ) {
+        return res.status(403).json({ error: err.message });
+      }
+      console.error(err);
+      return res.status(500).json({ error: 'Internal server error' });
+    }
+  }
+
+  /**
+   * DELETE /api/scans/:id — remove one saved report from attached storage.
+   */
+  async deleteSavedScan(req, res) {
+    if (
+      typeof req.isAuthenticated !== 'function' ||
+      !req.isAuthenticated() ||
+      !req.user?.storage
+    ) {
+      return res.status(401).json({ error: 'Not authenticated' });
+    }
+    if (!this.authService || !this.storageService) {
+      return res.status(503).json({ error: 'Storage is not configured' });
+    }
+
+    const { id } = req.params;
+    if (!id) {
+      return res.status(400).json({ error: 'Missing scan id' });
+    }
+
+    try {
+      const clients = await this.authService.clientsFor(req.user, {
+        storageRef: req.user.storage,
+      });
+      const result = await this.storageService.deleteScanById(
+        req.user,
+        id,
+        clients,
+      );
+
+      if (!req.user.account) {
+        req.user.account = {
+          settings: { autoDelete90d: true },
+          scanCount: 0,
+        };
+      }
+      req.user.account.scanCount = result.scanCount;
+      await this.authService.persistUser(req);
+
+      return res.json({
+        scanCount: result.scanCount,
+        scans: result.scans,
+      });
+    } catch (err) {
+      if (err.code === 'SCAN_NOT_FOUND' || err.status === 404) {
+        return res.status(404).json({ error: 'Scan not found' });
+      }
+      if (err.code === 'PROVIDER_NOT_AVAILABLE' || err.status === 501) {
+        return res.status(501).json({
+          error: err.message,
+          code: err.code,
+        });
+      }
+      if (
+        err.code === 'STORAGE_ACCESS_DENIED' ||
+        err.code === 'STORAGE_IDENTITY_MISMATCH' ||
+        err.status === 403
+      ) {
+        return res.status(403).json({ error: err.message });
+      }
+      console.error(err);
+      return res.status(500).json({ error: 'Internal server error' });
+    }
+  }
+
+  /**
+   * GET /api/scans — list the saved scans held in the user's own storage.
+   *
+   * The list lives in `index.json` in the user's repo, not on the session:
+   * it grows with every scan and the session must fit inside a 4KB cookie.
+   */
+  async getSavedScans(req, res) {
+    if (
+      typeof req.isAuthenticated !== 'function' ||
+      !req.isAuthenticated() ||
+      !req.user?.storage
+    ) {
+      return res.status(401).json({ error: 'Not authenticated' });
+    }
+    if (!this.authService || !this.storageService) {
+      return res.status(503).json({ error: 'Storage is not configured' });
+    }
+
+    try {
+      const clients = await this.authService.clientsFor(req.user, {
+        storageRef: req.user.storage,
+      });
+      const account = await this.storageService.loadAccount(
+        req.user.storage.provider || 'github',
+        req.user.storage,
+        clients,
+      );
+      return res.json({
+        scanCount: account.scanCount,
+        scans: account.index?.scans ?? [],
+      });
+    } catch (err) {
       if (
         err.code === 'STORAGE_ACCESS_DENIED' ||
         err.code === 'STORAGE_IDENTITY_MISMATCH' ||

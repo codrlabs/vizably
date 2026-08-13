@@ -191,6 +191,14 @@ summary) must be atomic or partial-write tolerant:
   using ETag/generation preconditions; rely on load-time reconcile to heal any
   gap.
 
+### Deleting a scan
+
+`DELETE /api/scans/:id` removes one immutable file `scans/<scanId>_<host>.json`
+and refreshes rebuildable caches (`scans/index.json` + manifest `summary`).
+Other scan files and account identity stay. GitHub history may still contain
+the deleted blob unless history is rewritten — disclose that in the UI if you
+talk about permanence. See [`scanDeletion.md`](./scanDeletion.md).
+
 ---
 
 ## Versioning & migration

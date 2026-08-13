@@ -4,9 +4,15 @@
  *
  * No user DB: the session payload (identity + encrypted tokens + attached
  * `storage`) is the user. Google auth/Drive clients are stubbed until Phase 3.
+ *
+ * The session is a signed cookie, not a server-side store. Serverless gives
+ * every request a fresh, isolated instance, so anything held in process memory
+ * is gone by the next request and OAuth never completes. The cookie is the
+ * store, which also means the payload must stay under the 4KB browser limit —
+ * see the scan list, which is fetched from the user's store instead.
  */
 const crypto = require('crypto');
-const session = require('express-session');
+const cookieSession = require('cookie-session');
 const passport = require('passport');
 const GitHubStrategy = require('passport-github2').Strategy;
 const { Octokit } = require('@octokit/rest');
@@ -399,20 +405,37 @@ class AuthService {
       throw new Error('SESSION_SECRET is not configured');
     }
 
-    const sessionMiddleware = session({
-      secret: this.sessionSecret,
-      resave: false,
-      saveUninitialized: false,
+    const sessionMiddleware = cookieSession({
       name: 'vizably.sid',
-      cookie: {
-        httpOnly: true,
-        secure: process.env.NODE_ENV === 'production',
-        sameSite: 'lax',
-        maxAge: 7 * 24 * 60 * 60 * 1000,
-      },
+      keys: [this.sessionSecret],
+      httpOnly: true,
+      // Must stay conditional: over plain http (docker-compose, `vercel dev`)
+      // a secure cookie is never set and every auth flow fails silently.
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: 'lax',
+      maxAge: 7 * 24 * 60 * 60 * 1000,
     });
 
-    return [sessionMiddleware, passport.initialize(), passport.session()];
+    // Passport calls session.regenerate and session.save, which cookie-session
+    // does not implement because the cookie *is* the store — there is nothing
+    // to regenerate and the write happens when the response is sent. No-op
+    // shims satisfy the contract without changing behaviour.
+    const passportSessionShims = (req, _res, next) => {
+      if (req.session && !req.session.regenerate) {
+        req.session.regenerate = (cb) => cb();
+      }
+      if (req.session && !req.session.save) {
+        req.session.save = (cb) => cb();
+      }
+      next();
+    };
+
+    return [
+      sessionMiddleware,
+      passportSessionShims,
+      passport.initialize(),
+      passport.session(),
+    ];
   }
 
   /**

@@ -356,6 +356,9 @@ Session cookies, not Bearer tokens. All calls use `credentials: 'include'`; no
 - `validateStorage(provider, storageRef)` → `POST /api/auth/storage/validate`
 - `setupStorage(provider, storageRef, action)` → `POST /api/auth/storage`
 - `logout()` → `POST /api/auth/logout`
+- `listScans()` → `GET /api/scans`
+- `getSavedScan(id)` → `GET /api/scans/:id`
+- `deleteScan(id)` → `DELETE /api/scans/:id`
 - `runScan`, `getScanResults`, `getProblem` unchanged.
 
 For Google, selection is done with the **Google Picker** client library; the

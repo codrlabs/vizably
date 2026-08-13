@@ -3,6 +3,7 @@
  */
 const test = require('node:test');
 const assert = require('node:assert/strict');
+const path = require('node:path');
 
 const ScanRunner = require('../services/scanRunner');
 
@@ -112,4 +113,24 @@ test('getResults delegates to run', async () => {
     validate: () => ({ ok: false, reason: 'bad' }),
   });
   await assert.rejects(() => runner.getResults('http://127.0.0.1'), /SSRF/);
+});
+
+test('importing scanRunner does not pull in puppeteer', () => {
+  // Vercel traces static requires into the function bundle, and puppeteer
+  // carries its own Chromium download. A top-level require here would blow
+  // the 250MB limit even though the serverless path never uses it.
+  const { execFileSync } = require('node:child_process');
+  const script = `
+    const path = require('path');
+    require('./services/scanRunner');
+    const marker = path.sep + 'node_modules' + path.sep + 'puppeteer' + path.sep;
+    const loaded = Object.keys(require.cache).some((p) => p.includes(marker));
+    console.log(loaded ? 'LOADED' : 'NOT_LOADED');
+  `;
+  const out = execFileSync(process.execPath, ['-e', script], {
+    cwd: path.join(__dirname, '..'),
+    encoding: 'utf8',
+  });
+
+  assert.match(out, /NOT_LOADED/);
 });

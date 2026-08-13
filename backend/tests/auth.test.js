@@ -6,7 +6,7 @@ const assert = require('node:assert/strict');
 const request = require('supertest');
 
 const { TEST_ENCRYPTION_KEY, TEST_SESSION_SECRET } = require('./helpers/testEnv');
-const buildApp = require('../app');
+const { buildApp } = require('../app');
 const AuthService = require('../services/authService');
 const StorageService = require('../services/storageService');
 
@@ -92,6 +92,154 @@ test('POST /api/auth/logout succeeds without an active session', async () => {
   assert.equal(res.body.success, true);
 });
 
+test('session survives a fresh app instance because the cookie is the store', async () => {
+  const express = require('express');
+  const authService = new AuthService({
+    sessionSecret: TEST_SESSION_SECRET,
+    encryptionKey: TEST_ENCRYPTION_KEY,
+  });
+
+  // Two independent instances share no process memory — the same situation as
+  // two serverless invocations. Only a cookie-borne session bridges them, so
+  // this fails against any in-memory store.
+  const makeInstance = () => {
+    const app = express();
+    app.use(...authService.middleware());
+    app.get('/write', (req, res) => {
+      req.session.marker = 'kept';
+      return res.json({ ok: true });
+    });
+    app.get('/read', (req, res) => res.json({ marker: req.session.marker ?? null }));
+    return app;
+  };
+
+  const written = await request(makeInstance()).get('/write');
+  const cookie = written.headers['set-cookie'];
+  assert.ok(cookie, 'expected a session cookie to be set');
+
+  const read = await request(makeInstance()).get('/read').set('Cookie', cookie);
+  assert.equal(read.body.marker, 'kept');
+});
+
+test('a failed OAuth token exchange redirects and logs the provider reason', async () => {
+  const express = require('express');
+  const makeAuthRouter = require('../routes/auth');
+
+  // What passport-oauth2 actually throws when GitHub rejects the exchange:
+  // a generic message, with the useful part buried on `oauthError`.
+  const oauthFailure = Object.assign(new Error('Failed to obtain access token'), {
+    oauthError: { data: '{"error":"incorrect_client_credentials"}' },
+  });
+
+  const app = express();
+  app.use(
+    '/api/auth',
+    makeAuthRouter({
+      authService: { authenticateGitHub: () => (_req, _res, next) => next(oauthFailure) },
+      storageService: {},
+    }),
+  );
+
+  const logged = [];
+  const originalError = console.error;
+  console.error = (...args) => logged.push(args.join(' '));
+
+  try {
+    const res = await request(app).get('/api/auth/github/callback');
+
+    // Not a 500 with a stack trace — the user lands back on Connect.
+    assert.equal(res.status, 302);
+    assert.match(res.headers.location, /error=auth_failed/);
+  } finally {
+    console.error = originalError;
+  }
+
+  // And the reason we could not see before is now in the logs.
+  assert.ok(
+    logged.some((line) => line.includes('incorrect_client_credentials')),
+    `expected the provider reason to be logged, got: ${JSON.stringify(logged)}`,
+  );
+});
+
+test('a Secure cookie is set behind a TLS-terminating proxy', async () => {
+  // Vercel terminates TLS at the edge and forwards plain http with
+  // X-Forwarded-Proto: https. Without `trust proxy` the cookie layer throws
+  // "Cannot send secure cookie over unencrypted connection" and every
+  // authenticated request 500s — in production only, since locally
+  // NODE_ENV is not 'production' and the cookie is not marked Secure.
+  const previousEnv = process.env.NODE_ENV;
+  process.env.NODE_ENV = 'production';
+
+  try {
+    const authService = new AuthService({
+      sessionSecret: TEST_SESSION_SECRET,
+      encryptionKey: TEST_ENCRYPTION_KEY,
+    });
+    const app = buildApp({ authService, storageService: new StorageService() });
+    app.get('/__probe', (req, res) => {
+      req.session.marker = 'kept';
+      return res.json({ protocol: req.protocol, secure: req.secure });
+    });
+
+    const res = await request(app)
+      .get('/__probe')
+      .set('X-Forwarded-Proto', 'https');
+
+    assert.equal(res.status, 200);
+    assert.equal(res.body.protocol, 'https');
+    assert.equal(res.body.secure, true);
+
+    const cookie = String(res.headers['set-cookie'] || '');
+    assert.match(cookie, /vizably\.sid=/);
+    assert.match(cookie, /secure/i);
+  } finally {
+    process.env.NODE_ENV = previousEnv;
+  }
+});
+
+test('session payload stays well under the 4KB cookie limit', async () => {
+  const express = require('express');
+  const authService = new AuthService({
+    sessionSecret: TEST_SESSION_SECRET,
+    encryptionKey: TEST_ENCRYPTION_KEY,
+  });
+
+  const app = express();
+  app.use(...authService.middleware());
+  app.get('/write', (req, res) => {
+    req.session.passport = {
+      user: {
+        id: '12345678',
+        provider: 'github',
+        username: 'devolabode',
+        displayName: 'Dev Olabode',
+        email: 'dev@example.com',
+        avatarUrl: 'https://avatars.githubusercontent.com/u/12345678?v=4',
+        tokens: { github: { accessToken: authService.encrypt('a'.repeat(40)) } },
+        storage: {
+          provider: 'github',
+          id: 'R_kgDOMxxxxx',
+          full_name: 'devolabode/vizably-account',
+          branch: 'main',
+        },
+        account: { accountId: 'acc-1', settings: { autoDelete90d: true }, scanCount: 42 },
+      },
+    };
+    return res.json({ ok: true });
+  });
+
+  const res = await request(app).get('/write');
+  const cookie = String(res.headers['set-cookie']);
+
+  // Browsers silently drop an oversized cookie, so this guards the whole auth
+  // flow: note scanCount is 42 while the size stays flat, because the scan
+  // list is fetched from storage rather than carried here.
+  assert.ok(
+    cookie.length < 4096,
+    `session cookie must stay under 4096 bytes, got ${cookie.length}`,
+  );
+});
+
 test('GET /api/auth/github initiates OAuth redirect', async () => {
   const app = createTestApp();
   const res = await request(app).get('/api/auth/github');
@@ -112,7 +260,8 @@ function createAuthedApp({ user, authService, storageService }) {
     req.isAuthenticated = () => Boolean(user);
     req.user = user;
     req.logout = (cb) => cb();
-    req.session = { destroy: (cb) => cb() };
+    // Plain object, matching cookie-session: no destroy(), cleared by nulling.
+    req.session = {};
     next();
   });
   // Route registration calls authenticateGitHub() immediately for the callback.
@@ -356,6 +505,10 @@ test('POST /api/auth/storage load attaches account to the session user', async (
   assert.equal(res.status, 200);
   assert.equal(res.body.success, true);
   assert.equal(res.body.account.scanCount, 2);
+  // The response still carries the list so the client can render immediately…
+  assert.equal(res.body.account.scans.length, 1);
+  // …but it is never persisted on the session, which must fit in a cookie.
+  assert.equal(user.account.scans, undefined);
   assert.equal(user.storage.full_name, 'sam/repo');
   assert.equal(persisted, true);
 });

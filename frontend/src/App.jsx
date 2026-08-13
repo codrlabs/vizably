@@ -64,20 +64,36 @@ function AuthLoadingIndicator() {
  * /results — renders the in-memory scan; on a deep link / refresh it
  * reloads a saved report (?scanId=) or re-fetches by ?url=.
  */
-function ResultsRoute({ scan, onOpenProblem }) {
+function ResultsRoute({ scan, onOpenProblem, onDelete }) {
   const [params] = useSearchParams()
   const scanId = params.get('scanId')
   const url = params.get('url')
 
-  if (scan) return <ResultsView data={scan} onOpenProblem={onOpenProblem} />
+  if (scan) {
+    return (
+      <ResultsView
+        data={scan}
+        onOpenProblem={onOpenProblem}
+        scanId={scanId || undefined}
+        onDelete={scanId ? onDelete : undefined}
+      />
+    )
+  }
   if (scanId) {
-    return <SavedScanFetcher key={scanId} scanId={scanId} onOpenProblem={onOpenProblem} />
+    return (
+      <SavedScanFetcher
+        key={scanId}
+        scanId={scanId}
+        onOpenProblem={onOpenProblem}
+        onDelete={onDelete}
+      />
+    )
   }
   if (!url) return <Navigate to={PATHS.landing} replace />
   return <ResultsFetcher url={url} onOpenProblem={onOpenProblem} />
 }
 
-function SavedScanFetcher({ scanId, onOpenProblem }) {
+function SavedScanFetcher({ scanId, onOpenProblem, onDelete }) {
   const navigate = useNavigate()
   const [viewModel, setViewModel] = useState(null)
   const [loading, setLoading] = useState(true)
@@ -124,7 +140,14 @@ function SavedScanFetcher({ scanId, onOpenProblem }) {
     )
   }
 
-  return <ResultsView data={viewModel} onOpenProblem={onOpenProblem} />
+  return (
+    <ResultsView
+      data={viewModel}
+      onOpenProblem={onOpenProblem}
+      scanId={scanId}
+      onDelete={onDelete}
+    />
+  )
 }
 
 function ResultsFetcher({ url, onOpenProblem }) {
@@ -177,11 +200,27 @@ function AppRoutes() {
 
   useEffect(() => { window.scrollTo(0, 0) }, [location.pathname])
 
+  /**
+   * The saved-scan list is not carried on the session — it grows with every
+   * scan and the session has to fit in a cookie — so it is fetched from the
+   * user's own store and merged into the client-side profile.
+   */
+  const withSavedScans = useCallback(async (profile) => {
+    if (!hasAttachedStorage(profile)) return profile
+    try {
+      const { scanCount, scans } = await apiClient.listScans()
+      return mergeAccountUpdate(profile, { scanCount, scans })
+    } catch {
+      // Profile is still usable; the list retries on the next dashboard visit.
+      return profile
+    }
+  }, [])
+
   const refreshUser = useCallback(async () => {
-    const profile = await apiClient.getUser()
+    const profile = await withSavedScans(await apiClient.getUser())
     setUser(profile)
     return profile
-  }, [])
+  }, [withSavedScans])
 
   useEffect(() => {
     let cancelled = false
@@ -190,7 +229,7 @@ function AppRoutes() {
       try {
         const status = await apiClient.getAuthStatus()
         if (status.authenticated) {
-          const profile = await apiClient.getUser()
+          const profile = await withSavedScans(await apiClient.getUser())
           if (!cancelled) setUser(profile)
         } else if (!cancelled) {
           setUser(null)
@@ -204,7 +243,7 @@ function AppRoutes() {
 
     bootstrapAuth()
     return () => { cancelled = true }
-  }, [])
+  }, [withSavedScans])
 
   const shellUser = useMemo(() => toShellUser(user), [user])
   const savedScans = useMemo(() => toSavedScans(user?.account), [user])
@@ -266,6 +305,21 @@ function AppRoutes() {
       setScan(null)
     }
     navigate(`${PATHS.results}?scanId=${encodeURIComponent(s.id)}`)
+  }
+
+  /** Remove one saved scan from attached storage and refresh the dashboard list. */
+  const deleteSaved = async (s) => {
+    if (!s?.id) return
+    const result = await apiClient.deleteScan(s.id)
+    setUser((prev) => mergeAccountUpdate(prev, {
+      scanCount: result.scanCount,
+      scans: result.scans,
+    }))
+    if (location.search.includes(`scanId=${encodeURIComponent(s.id)}`)) {
+      setScan(null)
+      setProblem(null)
+      navigate(PATHS.dashboard)
+    }
   }
 
   const auth = (p) => {
@@ -334,7 +388,7 @@ function AppRoutes() {
     <AppShell route={route} onNav={nav} authed={authed && storageReady} user={shellUser} theme={theme} onToggleTheme={toggleTheme}>
       <Routes>
         <Route path={PATHS.landing} element={<LandingView onScan={handleScan} />} />
-        <Route path={PATHS.results} element={<ResultsRoute scan={scan} onOpenProblem={openProblem} />} />
+        <Route path={PATHS.results} element={<ResultsRoute scan={scan} onOpenProblem={openProblem} onDelete={deleteSaved} />} />
         <Route path={`${PATHS.problem}/:id`} element={<ProblemRoute scan={scan} problem={problem} onBack={backToResults} />} />
         <Route path={PATHS.story} element={<StoryView onNav={nav} />} />
         <Route path={PATHS.donate} element={<DonateView onNav={nav} />} />
@@ -356,6 +410,7 @@ function AppRoutes() {
               <DashboardView
                 onNav={nav}
                 onOpen={openSaved}
+                onDelete={deleteSaved}
                 saved={savedScans}
                 provider={provider}
                 user={shellUser}

@@ -1,9 +1,14 @@
 name: Test
 
 on:
-  push:
-    branches: [main]
+  # Gates pull requests.
   pull_request:
+  # Gates deploys: deploy.yml calls this same suite, so there is one definition
+  # of "the tests pass" rather than a copy that can drift. Deliberately no
+  # `push: [main]` trigger — deploy.yml already runs this on every push to
+  # main, and having both ran the suite three times per merge, competing for
+  # runners with the deploy it was supposed to gate.
+  workflow_call:
 
 jobs:
   backend:
@@ -12,11 +17,17 @@ jobs:
     defaults:
       run:
         working-directory: backend
+    env:
+      # Tests inject a mock browser, so the real one is never launched.
+      # Skipping the download keeps CI from fetching ~170MB per run.
+      PUPPETEER_SKIP_DOWNLOAD: 'true'
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
         with:
-          node-version: '22'
+          # Matches engines.node in the root package.json, so CI runs on the
+          # same major that Vercel does.
+          node-version: '24'
           cache: npm
           cache-dependency-path: backend/package-lock.json
       - run: npm ci
@@ -29,10 +40,10 @@ jobs:
       run:
         working-directory: frontend
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
         with:
-          node-version: '22'
+          node-version: '24'
           cache: npm
           cache-dependency-path: frontend/package-lock.json
       - run: npm ci
