@@ -439,6 +439,36 @@ test('POST /api/auth/storage/create returns probe failures without needsInstall'
   assert.match(res.body.error, /do not reinstall/i);
 });
 
+test('POST /api/auth/storage/create returns REPO_CREATE_FORBIDDEN on Administration 403', async () => {
+  const app = createAuthedApp({
+    user: AUTHED_USER,
+    authService: {
+      clientsFor: async () => ({ githubUserClient: { mock: true } }),
+      getInstallationSetupUrl: async () =>
+        'https://github.com/apps/vizably/installations/new',
+    },
+    storageService: {
+      createGitHubRepository: async () => {
+        const err = new Error(
+          'GitHub App cannot create repositories. Add Repository permissions → Administration: Read and write, accept the permission upgrade on your installation, then sign out and sign in again.',
+        );
+        err.status = 403;
+        err.code = 'REPO_CREATE_FORBIDDEN';
+        throw err;
+      },
+    },
+  });
+  const res = await request(app)
+    .post('/api/auth/storage/create')
+    .send({ name: 'vizably-new' });
+  assert.equal(res.status, 403);
+  assert.equal(res.body.code, 'REPO_CREATE_FORBIDDEN');
+  assert.equal(res.body.needsInstall, undefined);
+  assert.equal(res.body.storageRef, undefined);
+  assert.match(res.body.error, /Administration:\s*Read and write/i);
+  assert.match(res.body.error, /permission upgrade/i);
+});
+
 test('POST /api/auth/storage/validate requires provider and storageRef', async () => {
   const app = createAuthedApp({
     user: AUTHED_USER,

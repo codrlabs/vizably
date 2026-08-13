@@ -537,6 +537,46 @@ test('createGitHubRepository maps name-taken conflicts', async () => {
   );
 });
 
+test('createGitHubRepository maps Administration permission 403 to REPO_CREATE_FORBIDDEN', async () => {
+  const storageService = new StorageService();
+  const forbidden = new Error('Resource not accessible by integration');
+  forbidden.status = 403;
+  forbidden.response = {
+    data: { message: 'Resource not accessible by integration' },
+  };
+  const client = createMockGitHubClient({ createRepoError: forbidden });
+  await assert.rejects(
+    () => storageService.createGitHubRepository('vizably-new', { githubUserClient: client }),
+    (err) => {
+      assert.equal(err.code, 'REPO_CREATE_FORBIDDEN');
+      assert.equal(err.status, 403);
+      assert.match(err.message, /Administration:\s*Read and write/i);
+      assert.match(err.message, /permission upgrade/i);
+      return true;
+    },
+  );
+});
+
+test('createGitHubRepository maps generic create 403 to REPO_CREATE_FORBIDDEN', async () => {
+  const storageService = new StorageService();
+  const forbidden = new Error('Forbidden');
+  forbidden.status = 403;
+  forbidden.response = {
+    data: { message: 'Although you appear to have the correct authorization credentials, organization policy prevents creating repositories.' },
+  };
+  const client = createMockGitHubClient({ createRepoError: forbidden });
+  await assert.rejects(
+    () => storageService.createGitHubRepository('vizably-new', { githubUserClient: client }),
+    (err) => {
+      assert.equal(err.code, 'REPO_CREATE_FORBIDDEN');
+      assert.equal(err.status, 403);
+      assert.match(err.message, /organization policy prevents creating repositories/i);
+      assert.doesNotMatch(err.message, /Administration/);
+      return true;
+    },
+  );
+});
+
 test('validateStorage returns initializable for empty repo', async () => {
   const storageService = new StorageService();
   const client = createMockGitHubClient();
