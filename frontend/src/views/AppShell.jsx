@@ -6,9 +6,13 @@ const BMC = 'https://ko-fi.com/devolabode'
 
 /** Top app bar with logo + nav, global footer. Donate lives in the footer. */
 export default function AppShell({ children, route, onNav, authed, user, theme, onToggleTheme }) {
-  // Keep New scan in the same slot whenever signed in so header order does not
-  // jump between routes (landing used to omit it and look reordered).
-  const showNewScan = authed && route !== 'signin' && route !== 'connect'
+  // Show New scan when signed in (stable header order), and also on results /
+  // problem for guests or signed-in users who have not connected storage yet —
+  // App passes authed={authed && storageReady}, and those routes have no guard.
+  const showNewScan =
+    (authed || route === 'results' || route === 'problem') &&
+    route !== 'signin' &&
+    route !== 'connect'
 
   const NavLink = ({ to, children }) => (
     <button onClick={() => onNav(to)} style={{
