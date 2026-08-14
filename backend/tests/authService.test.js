@@ -94,6 +94,35 @@ test('getGitHubClient returns authenticated Octokit', () => {
   assert.equal(typeof client.rest.repos.listForAuthenticatedUser, 'function');
 });
 
+test('createGitHubOctokit sends X-GitHub-Api-Version on requests', async () => {
+  const { createGitHubOctokit, GITHUB_API_VERSION } = require('../services/authService');
+  /** @type {Headers | Record<string, string> | undefined} */
+  let capturedHeaders;
+
+  const client = createGitHubOctokit({
+    auth: 'gho_test_token',
+    request: {
+      fetch: async (_url, options = {}) => {
+        capturedHeaders = options.headers;
+        return new Response(JSON.stringify({ login: 'sam' }), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' },
+        });
+      },
+    },
+  });
+
+  await client.rest.users.getAuthenticated();
+
+  assert.ok(capturedHeaders);
+  const headers =
+    typeof capturedHeaders.get === 'function'
+      ? capturedHeaders
+      : new Headers(capturedHeaders);
+  assert.equal(headers.get('X-GitHub-Api-Version'), GITHUB_API_VERSION);
+  assert.equal(GITHUB_API_VERSION, '2026-03-10');
+});
+
 test('getGoogleDriveClient returns null until Phase 3', () => {
   const authService = new AuthService({
     sessionSecret: TEST_SESSION_SECRET,
