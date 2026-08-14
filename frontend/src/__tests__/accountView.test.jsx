@@ -59,15 +59,10 @@ describe('AccountView', () => {
     expect(onSignOut).toHaveBeenCalledTimes(1)
   })
 
-  it('wipes storage then asks about repo delete before finishing', async () => {
+  it('asks about repo delete before any mutation, then deletes the repo first', async () => {
     const onAccountDeleted = vi.fn()
     const client = {
-      wipeAccount: vi.fn().mockResolvedValue({
-        success: true,
-        wiped: true,
-        pathsRemoved: ['vizably.json'],
-        storageRef: { id: 'R_kg', full_name: 'sam/vizably-scans', branch: 'main' },
-      }),
+      wipeAccount: vi.fn(),
       deleteAccountRepository: vi.fn().mockResolvedValue({
         success: true,
         deleted: true,
@@ -87,11 +82,11 @@ describe('AccountView', () => {
     )
 
     fireEvent.click(screen.getByRole('button', { name: /delete my account/i }))
-    fireEvent.click(screen.getByRole('button', { name: /delete my vizably data/i }))
+    fireEvent.click(screen.getByRole('button', { name: /^continue$/i }))
 
     expect(await screen.findByText(/also delete the github repository/i)).toBeInTheDocument()
-    expect(client.wipeAccount).toHaveBeenCalledTimes(1)
-    expect(onAccountDeleted).not.toHaveBeenCalled()
+    expect(client.wipeAccount).not.toHaveBeenCalled()
+    expect(client.deleteAccountRepository).not.toHaveBeenCalled()
 
     fireEvent.click(screen.getByRole('button', { name: /yes, delete repository/i }))
 
@@ -99,9 +94,10 @@ describe('AccountView', () => {
     await waitFor(() =>
       expect(onAccountDeleted).toHaveBeenCalledWith({ deletedRepository: true }),
     )
+    expect(client.wipeAccount).not.toHaveBeenCalled()
   })
 
-  it('skips repo delete when the user keeps the repository', async () => {
+  it('wipes only when the user keeps the repository', async () => {
     const onAccountDeleted = vi.fn()
     const client = {
       wipeAccount: vi.fn().mockResolvedValue({
@@ -125,15 +121,45 @@ describe('AccountView', () => {
     )
 
     fireEvent.click(screen.getByRole('button', { name: /delete my account/i }))
-    fireEvent.click(screen.getByRole('button', { name: /delete my vizably data/i }))
+    fireEvent.click(screen.getByRole('button', { name: /^continue$/i }))
     expect(await screen.findByText(/also delete the github repository/i)).toBeInTheDocument()
 
-    fireEvent.click(screen.getByRole('button', { name: /no, keep repository/i }))
+    fireEvent.click(screen.getByRole('button', { name: /no, wipe data only/i }))
 
+    await waitFor(() => expect(client.wipeAccount).toHaveBeenCalledTimes(1))
     await waitFor(() =>
       expect(onAccountDeleted).toHaveBeenCalledWith({ deletedRepository: false }),
     )
     expect(client.deleteAccountRepository).not.toHaveBeenCalled()
+  })
+
+  it('leaves the store intact when repo delete fails', async () => {
+    const onAccountDeleted = vi.fn()
+    const client = {
+      wipeAccount: vi.fn(),
+      deleteAccountRepository: vi.fn().mockRejectedValue(
+        new Error('GitHub App cannot delete repositories'),
+      ),
+    }
+
+    render(
+      <AccountView
+        onSignOut={vi.fn()}
+        onAccountDeleted={onAccountDeleted}
+        user={USER}
+        shellUser={{ name: 'Sam', email: 'sam@example.com' }}
+        provider="github"
+        client={client}
+      />,
+    )
+
+    fireEvent.click(screen.getByRole('button', { name: /delete my account/i }))
+    fireEvent.click(screen.getByRole('button', { name: /^continue$/i }))
+    fireEvent.click(await screen.findByRole('button', { name: /yes, delete repository/i }))
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(/cannot delete/i)
+    expect(client.wipeAccount).not.toHaveBeenCalled()
+    expect(onAccountDeleted).not.toHaveBeenCalled()
   })
 
   it('shows wipe errors without signing out', async () => {
@@ -155,7 +181,8 @@ describe('AccountView', () => {
     )
 
     fireEvent.click(screen.getByRole('button', { name: /delete my account/i }))
-    fireEvent.click(screen.getByRole('button', { name: /delete my vizably data/i }))
+    fireEvent.click(screen.getByRole('button', { name: /^continue$/i }))
+    fireEvent.click(await screen.findByRole('button', { name: /no, wipe data only/i }))
 
     expect(await screen.findByRole('alert')).toHaveTextContent(/refused the wipe/i)
     expect(onAccountDeleted).not.toHaveBeenCalled()

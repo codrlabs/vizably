@@ -113,15 +113,15 @@ export class ApiClient {
   }
 
   /**
-   * Delete the GitHub repository that held the account store.
-   * @param {object} storageRef from wipe response (session storage is cleared after wipe)
+   * Delete the GitHub repository that holds the account store.
+   * Uses the session-attached storage only (no client-supplied storageRef).
    * @returns {Promise<{ success: boolean, deleted: boolean, full_name: string }>}
    */
-  deleteAccountRepository(storageRef) {
+  deleteAccountRepository() {
     return this._request('/api/auth/account/delete-repository', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ confirm: true, storageRef }),
+      body: JSON.stringify({ confirm: true }),
     })
   }
 

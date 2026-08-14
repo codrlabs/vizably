@@ -131,19 +131,24 @@ Add authenticated endpoints in `backend/routes/auth.js` (thin; call
 | Method | Path | Body | Behaviour |
 |--------|------|------|-----------|
 | `POST` | `/api/auth/account/wipe` | (optional provider) | Wipe Vizably files in the session user’s attached `storage`. |
-| `POST` | `/api/auth/account/delete-repository` | `{ confirm: true }` | Delete the GitHub repo for attached `storage`. Require explicit `confirm`. |
-| `POST` | `/api/auth/account/delete` | `{ deleteRepository: boolean }` | **Orchestrated** endpoint: wipe → optional delete repo → logout. Prefer this for a single round-trip if the UI collects both answers first. |
+| `POST` | `/api/auth/account/delete-repository` | `{ confirm: true }` | Delete the GitHub repo for **session-attached** `storage` only. Ignore any client `storageRef`. Require explicit `confirm`. |
+| `POST` | `/api/auth/account/delete` | `{ deleteRepository: boolean }` | Optional orchestrated endpoint: if `deleteRepository` → delete repo first; else wipe; then logout. |
 
-Recommended for #82 UX (two questions):
+Recommended for #82 UX (two questions, **collect both answers before mutating**):
 
-1. `POST /api/auth/account/wipe` after first confirm.
-2. If user says yes to repo delete → `POST /api/auth/account/delete-repository`.
-3. Always finish with existing `POST /api/auth/logout` (or include logout in a
-   final `POST /api/auth/account/delete` that accepts `{ deleteRepository }`).
+1. Confirm wipe intent (no API yet).
+2. GitHub only: ask whether to also delete the repository.
+3. If yes → `POST /api/auth/account/delete-repository` **first** (whole repo gone;
+   wipe is unnecessary). A failed delete (e.g. missing Administration) leaves
+   Vizably data intact.
+4. If no → `POST /api/auth/account/wipe` only.
+5. Always finish with existing `POST /api/auth/logout`.
 
 **Session rules:**
 
 - Require auth + attached `user.storage` (same as load/save paths).
+- `delete-repository` must **not** accept a client-supplied `storageRef` — only
+  the session-attached store.
 - After wipe/delete, clear `user.storage` / account payload from the session
   before or as part of logout so a stale cookie cannot reload a deleted store.
 - Never write OAuth tokens into the store (existing non-negotiable).
@@ -153,7 +158,9 @@ Recommended for #82 UX (two questions):
 - Unauthenticated → 401.
 - Wipe returns success and does not leave session claiming a loadable store.
 - Delete-repository without `confirm` → 400.
-- Happy path wipe + optional delete + logout.
+- Delete-repository uses session storage; body `storageRef` is ignored.
+- Delete-repository without attached session storage → 400.
+- Happy path wipe **or** delete + logout.
 
 ---
 
@@ -173,21 +180,18 @@ Mirror error `code` / `message` to the UI.
 
 Replace the logout-only danger zone in `frontend/src/views/AccountView.jsx`:
 
-1. **Step 1 — Wipe confirm**  
+1. **Step 1 — Wipe intent confirm** (no mutation yet)  
    - Copy: deletes Vizably data in `{storageLabel}` (`vizably.json` + scans).  
-   - Primary: “Delete my Vizably data”.  
-   - Call wipe API; show progress / disable double-submit.
+   - GitHub: “Continue” → Step 2. Google / non-GitHub: wipe API then sign out.
 
-2. **Step 2 — Repo delete prompt** (GitHub only, after wipe succeeds)  
+2. **Step 2 — Repo delete prompt** (GitHub only, **before** any wipe)  
    - “Also delete the repository `{full_name}` on GitHub?”  
-   - Yes → delete-repository API.  
-   - No → skip.  
-   - Disclose Administration permission if delete fails with forbidden.
+   - Yes → delete-repository API first (wipe unnecessary if repo is gone).  
+   - No → wipe API only.  
+   - Disclose Administration permission; on failure leave the store intact.
 
 3. **Step 3 — Sign out**  
-   - Call `onSignOut` / `logout` always after a successful wipe (whether or not
-     the repo was deleted).  
-   - Change button copy from “Yes, sign out” to match the real action.  
+   - Call `onAccountDeleted` / logout after a successful wipe **or** repo delete.  
    - Remove the “storage deletion is not wired yet” disclaimer.
 
 4. **Success**  

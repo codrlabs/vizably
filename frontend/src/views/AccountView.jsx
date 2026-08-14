@@ -8,6 +8,10 @@ import { apiClient } from '../lib/apiClient'
  * Account settings — profile + data/storage controls + delete account.
  * Deliberately framed around using LESS storage, not more.
  *
+ * Delete flow collects both confirms before mutating. If the user wants the
+ * GitHub repo gone, delete it first (wipe is then unnecessary). If they keep
+ * the repo, wipe Vizably files only. A failed repo delete leaves the store intact.
+ *
  * @param {object} props
  * @param {() => void | Promise<void>} props.onSignOut
  * @param {(result: { deletedRepository: boolean }) => void | Promise<void>} props.onAccountDeleted
@@ -29,10 +33,9 @@ export default function AccountView({
   /** @type {'idle' | 'confirm-wipe' | 'ask-repo' | 'busy'} */
   const [deleteStep, setDeleteStep] = useState('idle')
   const [deleteError, setDeleteError] = useState(null)
-  const [wipedStorageRef, setWipedStorageRef] = useState(null)
 
   const savedCount = user?.account?.scanCount ?? user?.account?.scans?.length ?? 0
-  const storageLabel = user?.storage?.full_name || wipedStorageRef?.full_name || pv.dest
+  const storageLabel = user?.storage?.full_name || pv.dest
   const displayUser = shellUser || {
     name: user?.displayName || user?.username || 'User',
     email: user?.email || '',
@@ -73,44 +76,42 @@ export default function AccountView({
     await onAccountDeleted({ deletedRepository })
   }
 
-  const handleWipe = async () => {
+  /** First confirm — for GitHub, ask about the repo before any mutation. */
+  const handleConfirmWipeIntent = async () => {
     setDeleteError(null)
+    if (isGitHub) {
+      setDeleteStep('ask-repo')
+      return
+    }
     setDeleteStep('busy')
     try {
-      const result = await client.wipeAccount()
-      setWipedStorageRef(result.storageRef)
-      if (isGitHub) {
-        setDeleteStep('ask-repo')
-      } else {
-        await finishDeletion(false)
-      }
+      await client.wipeAccount()
+      await finishDeletion(false)
     } catch (err) {
       setDeleteError(err.message || 'Failed to delete Vizably data from storage')
       setDeleteStep('confirm-wipe')
     }
   }
 
-  const handleDeleteRepository = async (shouldDelete) => {
+  const handleRepoChoice = async (shouldDeleteRepo) => {
     setDeleteError(null)
-    if (!shouldDelete) {
-      setDeleteStep('busy')
-      try {
-        await finishDeletion(false)
-      } catch (err) {
-        setDeleteError(err.message || 'Failed to finish account deletion')
-        setDeleteStep('ask-repo')
-      }
-      return
-    }
-
     setDeleteStep('busy')
     try {
-      await client.deleteAccountRepository(
-        wipedStorageRef || user?.storage || { full_name: storageLabel },
-      )
-      await finishDeletion(true)
+      if (shouldDeleteRepo) {
+        // Delete the repo first so a 403 leaves Vizably data untouched.
+        await client.deleteAccountRepository()
+        await finishDeletion(true)
+        return
+      }
+      await client.wipeAccount()
+      await finishDeletion(false)
     } catch (err) {
-      setDeleteError(err.message || 'Failed to delete the GitHub repository')
+      setDeleteError(
+        err.message ||
+          (shouldDeleteRepo
+            ? 'Failed to delete the GitHub repository'
+            : 'Failed to delete Vizably data from storage'),
+      )
       setDeleteStep('ask-repo')
     }
   }
@@ -168,7 +169,7 @@ export default function AccountView({
       <Card style={{ borderColor: 'var(--sev-critical-bg)' }}>
         <h2 style={{ fontSize: 'var(--text-lg)', margin: '0 0 2px', color: 'var(--sev-critical-fg)' }}>Delete account</h2>
         <p style={{ fontSize: 'var(--text-sm)', color: 'var(--text-muted)', margin: '0 0 16px', lineHeight: 1.5 }}>
-          Remove Vizably’s data from {pv.storeShort} ({storageLabel}), then optionally delete the repository. Your {pv.name} login itself stays untouched. This can’t be undone.
+          Remove Vizably’s data from {pv.storeShort} ({storageLabel}), or delete the whole GitHub repository. Your {pv.name} login itself stays untouched. This can’t be undone.
         </p>
 
         {deleteError && (
@@ -193,8 +194,8 @@ export default function AccountView({
               Delete Vizably data in {storageLabel}? This removes vizably.json and all saved scans.
             </p>
             <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
-              <Button variant="danger" disabled={deleting} onClick={handleWipe} iconLeft={Ico('Trash2', 16, '#fff')}>
-                Delete my Vizably data
+              <Button variant="danger" disabled={deleting} onClick={handleConfirmWipeIntent} iconLeft={Ico('Trash2', 16, '#fff')}>
+                {isGitHub ? 'Continue' : 'Delete my Vizably data'}
               </Button>
               <Button variant="secondary" disabled={deleting} onClick={() => { setDeleteStep('idle'); setDeleteError(null) }}>
                 Keep my account
@@ -206,17 +207,17 @@ export default function AccountView({
         {deleteStep === 'ask-repo' && (
           <div style={{ background: 'var(--sev-critical-bg)', border: '1px solid var(--sev-critical)', borderRadius: 'var(--radius-md)', padding: 'var(--space-4)' }}>
             <p style={{ font: 'var(--font-label)', fontWeight: 'var(--weight-semibold)', color: 'var(--sev-critical-fg)', margin: '0 0 8px' }}>
-              Vizably data was removed. Also delete the GitHub repository {storageLabel}?
+              Also delete the GitHub repository {storageLabel}?
             </p>
             <p style={{ fontSize: 'var(--text-xs)', color: 'var(--text-muted)', margin: '0 0 12px', lineHeight: 1.45 }}>
-              Deleting the repo requires Vizably’s GitHub App <strong style={{ color: 'var(--text-body)' }}>Administration</strong> permission. Choose No to leave an empty / non-Vizably repo on GitHub.
+              Yes deletes the whole repo (needs Vizably’s GitHub App <strong style={{ color: 'var(--text-body)' }}>Administration</strong> permission). No only removes Vizably files and leaves the repo. If delete fails, nothing is wiped yet.
             </p>
             <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
-              <Button variant="danger" disabled={deleting} onClick={() => handleDeleteRepository(true)} iconLeft={Ico('Trash2', 16, '#fff')}>
+              <Button variant="danger" disabled={deleting} onClick={() => handleRepoChoice(true)} iconLeft={Ico('Trash2', 16, '#fff')}>
                 Yes, delete repository
               </Button>
-              <Button variant="secondary" disabled={deleting} onClick={() => handleDeleteRepository(false)}>
-                No, keep repository
+              <Button variant="secondary" disabled={deleting} onClick={() => handleRepoChoice(false)}>
+                No, wipe data only
               </Button>
             </div>
           </div>

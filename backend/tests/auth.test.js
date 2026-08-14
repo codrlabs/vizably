@@ -594,11 +594,63 @@ test('POST /api/auth/account/delete-repository deletes when confirmed', async ()
   });
   const res = await request(app)
     .post('/api/auth/account/delete-repository')
+    .send({ confirm: true });
+  assert.equal(res.status, 200);
+  assert.equal(res.body.deleted, true);
+  assert.equal(res.body.full_name, 'sam/site-audits');
+  assert.equal(user.storage, undefined);
+});
+
+test('POST /api/auth/account/delete-repository ignores client storageRef and uses session', async () => {
+  const user = {
+    ...AUTHED_USER,
+    storage: { id: 'R_kg', full_name: 'sam/site-audits' },
+  };
+  /** @type {object | null} */
+  let deletedRef = null;
+  const app = createAuthedApp({
+    user,
+    authService: {
+      clientsFor: async () => ({ githubUserClient: {} }),
+      persistUser: async () => {},
+    },
+    storageService: {
+      deleteGitHubRepository: async (ref) => {
+        deletedRef = ref;
+        return { deleted: true, full_name: ref.full_name };
+      },
+    },
+  });
+  const res = await request(app)
+    .post('/api/auth/account/delete-repository')
+    .send({
+      confirm: true,
+      storageRef: { id: 'R_evil', full_name: 'evil/other-repo' },
+    });
+  assert.equal(res.status, 200);
+  assert.equal(deletedRef?.full_name, 'sam/site-audits');
+  assert.equal(deletedRef?.id, 'R_kg');
+});
+
+test('POST /api/auth/account/delete-repository requires attached session storage', async () => {
+  const app = createAuthedApp({
+    user: { ...AUTHED_USER },
+    authService: {
+      clientsFor: async () => ({ githubUserClient: {} }),
+      persistUser: async () => {},
+    },
+    storageService: {
+      deleteGitHubRepository: async () => {
+        throw new Error('should not be called');
+      },
+    },
+  });
+  const res = await request(app)
+    .post('/api/auth/account/delete-repository')
     .send({
       confirm: true,
       storageRef: { id: 'R_kg', full_name: 'sam/site-audits' },
     });
-  assert.equal(res.status, 200);
-  assert.equal(res.body.deleted, true);
-  assert.equal(res.body.full_name, 'sam/site-audits');
+  assert.equal(res.status, 400);
+  assert.match(res.body.error, /No storage is attached/i);
 });

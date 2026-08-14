@@ -310,12 +310,12 @@ function makeAuthRouter({ authService, storageService }) {
         });
       }
 
-      // Prefer the ref returned from wipe (session storage is cleared after wipe).
-      const storageRef = req.body?.storageRef || req.user?.storage;
+      // Only the session-attached store — never trust a client-supplied storageRef.
+      const storageRef = req.user?.storage;
       if (!storageRef?.full_name && !storageRef?.id) {
         return res.status(400).json({
           error:
-            'storageRef is required (pass the wipe response storageRef after clearing the session store).',
+            'No storage is attached to this session. Connect a repository first.',
         });
       }
 

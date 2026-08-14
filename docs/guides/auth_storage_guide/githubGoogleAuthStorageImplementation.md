@@ -254,7 +254,7 @@ at router level. **No frontend imports** (`PROVIDERS` lives in the frontend only
 | GET | `/api/auth/status` | `{ authenticated, user }` |
 | POST | `/api/auth/logout` | `req.logout()`, destroy session, clear cookie |
 | POST | `/api/auth/account/wipe` | Remove Vizably files (`vizably.json` + `scans/`) from attached storage; clear session storage |
-| POST | `/api/auth/account/delete-repository` | `{ confirm: true, storageRef? }` — optionally delete the GitHub repo (Administration) |
+| POST | `/api/auth/account/delete-repository` | `{ confirm: true }` — delete the session-attached GitHub repo (Administration); ignore client `storageRef` |
 
 **Mounting** — exactly once, in `backend/routes/index.js`:
 
