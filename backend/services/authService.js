@@ -20,6 +20,25 @@ const { collectAllGitHubPages, findInGitHubPages } = require('./githubPagination
 
 const GOOGLE_NOT_AVAILABLE = 'Google auth is not available until Phase 3';
 
+/** Current supported REST calendar version — avoids 2022-11-28 deprecation noise. */
+const GITHUB_API_VERSION = '2026-03-10';
+
+/**
+ * Build an Octokit client that always sends X-GitHub-Api-Version.
+ * Constructor `request.headers` is ignored by @octokit/rest@20 — must use defaults.
+ *
+ * @param {object} [options]
+ * @param {string} [options.auth]
+ * @returns {import('@octokit/rest').Octokit}
+ */
+function createGitHubOctokit(options = {}) {
+  const octokit = new Octokit(options);
+  octokit.request = octokit.request.defaults({
+    headers: { 'X-GitHub-Api-Version': GITHUB_API_VERSION },
+  });
+  return octokit;
+}
+
 class AuthService {
   /**
    * @param {object} [deps]
@@ -117,7 +136,7 @@ class AuthService {
 
     if (this._hasGitHubAppSigningCredentials()) {
       try {
-        const appOctokit = new Octokit({ auth: this._createAppJwt() });
+        const appOctokit = createGitHubOctokit({ auth: this._createAppJwt() });
         const { data } = await appOctokit.rest.apps.getRepoInstallation({
           owner,
           repo,
@@ -172,7 +191,7 @@ class AuthService {
       if (!this._hasGitHubAppSigningCredentials()) {
         return installUrl;
       }
-      const appOctokit = new Octokit({ auth: this._createAppJwt() });
+      const appOctokit = createGitHubOctokit({ auth: this._createAppJwt() });
       const { data } = await appOctokit.rest.apps.getAuthenticated();
       if (data?.slug) {
         installUrl = `https://github.com/apps/${data.slug}/installations/new`;
@@ -261,12 +280,12 @@ class AuthService {
       throw new Error(await this._installationSetupMessage(fullName));
     }
 
-    const appOctokit = new Octokit({ auth: this._createAppJwt() });
+    const appOctokit = createGitHubOctokit({ auth: this._createAppJwt() });
     const { data } = await appOctokit.rest.apps.createInstallationAccessToken({
       installation_id: installationId,
     });
 
-    return new Octokit({ auth: data.token });
+    return createGitHubOctokit({ auth: data.token });
   }
 
   /** @param {string | undefined} b64 */
@@ -449,7 +468,7 @@ class AuthService {
     }
 
     const accessToken = this.decrypt(encrypted);
-    return new Octokit({ auth: accessToken });
+    return createGitHubOctokit({ auth: accessToken });
   }
 
   /**
@@ -550,3 +569,5 @@ class AuthService {
 }
 
 module.exports = AuthService;
+module.exports.createGitHubOctokit = createGitHubOctokit;
+module.exports.GITHUB_API_VERSION = GITHUB_API_VERSION;
