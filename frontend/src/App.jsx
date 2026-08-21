@@ -322,6 +322,20 @@ function AppRoutes() {
     }
   }
 
+  /** Remove every saved scan from attached storage; keep the account connected. */
+  const deleteAllSaved = async () => {
+    const result = await apiClient.deleteAllScans()
+    setUser((prev) => mergeAccountUpdate(prev, {
+      scanCount: result.scanCount,
+      scans: result.scans,
+    }))
+    if (location.search.includes('scanId=')) {
+      setScan(null)
+      setProblem(null)
+    }
+    return result
+  }
+
   const auth = (p) => {
     if (p === 'google') return
     apiClient.githubLogin()
@@ -425,6 +439,7 @@ function AppRoutes() {
             <RequireStorage>
               <AccountView
                 onSignOut={signOut}
+                onDeleteAllScans={deleteAllSaved}
                 user={user}
                 shellUser={shellUser}
                 provider={provider}
