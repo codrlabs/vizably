@@ -222,6 +222,16 @@ export class ApiClient {
   }
 
   /**
+   * Delete every saved scan from attached storage (keeps the account store).
+   * @returns {Promise<{ deletedCount: number, scanCount: number, scans: object[] }>}
+   */
+  deleteAllScans() {
+    return this._request('/api/scans', {
+      method: 'DELETE',
+    })
+  }
+
+  /**
    * Look up a single problem by id.
    * @param {string} id
    * @returns {Promise<Problem>}

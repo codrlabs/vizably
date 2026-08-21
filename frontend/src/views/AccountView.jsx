@@ -2,15 +2,34 @@ import { useState } from 'react'
 import { Button, Card, Input } from '../design-system'
 import { Ico, GoogleMark } from '../lib/icons'
 import { PROVIDERS } from '../data/placeholders'
+import { apiClient } from '../lib/apiClient'
 
 /**
  * Account settings — profile + data/storage controls + delete account.
  * Deliberately framed around using LESS storage, not more.
+ *
+ * @param {object} props
+ * @param {() => void | Promise<void>} props.onSignOut
+ * @param {(result: { scanCount: number, scans: object[] }) => void | Promise<void>} [props.onDeleteAllScans]
+ * @param {object} props.user
+ * @param {object} [props.shellUser]
+ * @param {'github' | 'google'} props.provider
+ * @param {import('../lib/apiClient').ApiClient} [props.client]
  */
-export default function AccountView({ onSignOut, user, shellUser, provider }) {
+export default function AccountView({
+  onSignOut,
+  onDeleteAllScans,
+  user,
+  shellUser,
+  provider,
+  client = apiClient,
+}) {
   const pv = PROVIDERS[provider] || PROVIDERS.github
   const [autoDelete, setAutoDelete] = useState(user?.account?.settings?.autoDelete90d ?? true)
   const [confirmDelete, setConfirmDelete] = useState(false)
+  /** @type {'idle' | 'confirm' | 'busy'} */
+  const [deleteAllStep, setDeleteAllStep] = useState('idle')
+  const [deleteAllError, setDeleteAllError] = useState(null)
 
   const savedCount = user?.account?.scanCount ?? user?.account?.scans?.length ?? 0
   const storageLabel = user?.storage?.full_name || pv.dest
@@ -18,6 +37,7 @@ export default function AccountView({ onSignOut, user, shellUser, provider }) {
     name: user?.displayName || user?.username || 'User',
     email: user?.email || '',
   }
+  const deletingAll = deleteAllStep === 'busy'
 
   const Section = ({ title, desc, children }) => (
     <section style={{ marginBottom: 22 }}>
@@ -47,6 +67,21 @@ export default function AccountView({ onSignOut, user, shellUser, provider }) {
       <span style={{ position: 'absolute', top: 3, left: on ? 21 : 3, width: 20, height: 20, borderRadius: '50%', background: '#fff', boxShadow: 'var(--shadow-sm)', transition: 'left var(--duration-fast) var(--ease-standard)' }} />
     </button>
   )
+
+  const handleDeleteAll = async () => {
+    setDeleteAllError(null)
+    setDeleteAllStep('busy')
+    try {
+      const result = onDeleteAllScans
+        ? await onDeleteAllScans()
+        : await client.deleteAllScans()
+      setDeleteAllStep('idle')
+      return result
+    } catch (err) {
+      setDeleteAllError(err?.message || 'Failed to delete saved scans')
+      setDeleteAllStep('confirm')
+    }
+  }
 
   return (
     <div style={{ width: '100%', maxWidth: 680, margin: '0 auto', padding: '36px 24px 64px' }}>
@@ -83,11 +118,71 @@ export default function AccountView({ onSignOut, user, shellUser, provider }) {
       <Card style={{ marginBottom: 22 }}>
         <Section title="Data & storage" desc={`Your scans are saved in ${pv.store} — your space, not ours. Manage what’s kept here.`}>
           <div style={{ display: 'flex', flexDirection: 'column' }}>
-            <RowItem icon={pv.destIcon} title={`Saved scans · ${savedCount}`} sub={savedCount ? `Stored in ${pv.storeShort} (${storageLabel}).` : 'No saved scans — nothing is taking up space.'}>
-              <Button variant="secondary" size="sm" disabled title="Bulk delete lands in a later phase">
-                {savedCount ? 'Delete all' : 'Cleared'}
-              </Button>
+            <RowItem
+              icon={pv.destIcon}
+              title={`Saved scans · ${savedCount}`}
+              sub={savedCount ? `Stored in ${pv.storeShort} (${storageLabel}).` : 'No saved scans — nothing is taking up space.'}
+            >
+              {savedCount === 0 ? (
+                <Button variant="secondary" size="sm" disabled>
+                  Cleared
+                </Button>
+              ) : deleteAllStep === 'idle' ? (
+                <Button variant="secondary" size="sm" onClick={() => { setDeleteAllError(null); setDeleteAllStep('confirm') }}>
+                  Delete all
+                </Button>
+              ) : null}
             </RowItem>
+
+            {deleteAllStep !== 'idle' && savedCount > 0 && (
+              <div
+                role="region"
+                aria-label="Confirm delete all scans"
+                style={{
+                  marginBottom: 8,
+                  padding: 'var(--space-4)',
+                  background: 'var(--sev-critical-bg)',
+                  border: '1px solid var(--sev-critical)',
+                  borderRadius: 'var(--radius-md)',
+                }}
+              >
+                <p style={{ font: 'var(--font-label)', fontWeight: 'var(--weight-semibold)', color: 'var(--sev-critical-fg)', margin: '0 0 8px' }}>
+                  Delete all {savedCount} saved scan{savedCount === 1 ? '' : 's'} from {storageLabel}?
+                </p>
+                <p style={{ fontSize: 'var(--text-xs)', color: 'var(--text-muted)', margin: '0 0 12px', lineHeight: 1.45 }}>
+                  Removes every report under scans/. Your Vizably account and repository stay. This can’t be undone.
+                </p>
+                {deleteAllError && (
+                  <div role="alert" style={{
+                    marginBottom: 12, padding: '10px 12px', borderRadius: 'var(--radius-md)',
+                    background: 'var(--surface-card)', border: '1px solid var(--sev-critical)',
+                    color: 'var(--sev-critical-fg)', fontSize: 'var(--text-sm)', lineHeight: 1.45,
+                  }}>
+                    {deleteAllError}
+                  </div>
+                )}
+                <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+                  <Button
+                    variant="danger"
+                    size="sm"
+                    disabled={deletingAll}
+                    onClick={handleDeleteAll}
+                    iconLeft={Ico('Trash2', 16, '#fff')}
+                  >
+                    {deletingAll ? 'Deleting…' : 'Yes, delete all'}
+                  </Button>
+                  <Button
+                    variant="secondary"
+                    size="sm"
+                    disabled={deletingAll}
+                    onClick={() => { setDeleteAllStep('idle'); setDeleteAllError(null) }}
+                  >
+                    Keep scans
+                  </Button>
+                </div>
+              </div>
+            )}
+
             <div style={{ borderTop: '1px solid var(--border-subtle)' }} />
             <RowItem icon="Timer" title="Auto-delete old scans" sub={`Automatically remove scans older than 90 days from ${pv.storeShort}.`}>
               <Switch on={autoDelete} onToggle={() => setAutoDelete((v) => !v)} />

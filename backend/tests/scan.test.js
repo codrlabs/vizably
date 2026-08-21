@@ -508,3 +508,59 @@ test('deleteSavedScan returns 404 for SCAN_NOT_FOUND', async () => {
   );
   assert.equal(out.statusCode, 404);
 });
+
+test('deleteAllSavedScans clears every scan and updates session scanCount', async () => {
+  const ScanController = require('../controllers/scanController');
+  let persisted = false;
+  const ctrl = new ScanController({
+    mockScanResults,
+    scanRunner: mockScanRunner,
+    authService: {
+      clientsFor: async () => ({ githubClient: {} }),
+      persistUser: async () => {
+        persisted = true;
+      },
+    },
+    storageService: {
+      deleteAllScans: async () => ({
+        deletedCount: 2,
+        scanCount: 0,
+        scans: [],
+      }),
+    },
+  });
+
+  const req = {
+    isAuthenticated: () => true,
+    user: {
+      storage: { id: 'R_kg', full_name: 'sam/repo' },
+      account: { scanCount: 2 },
+    },
+  };
+  const out = mockRes();
+  await ctrl.deleteAllSavedScans(req, out.res);
+
+  assert.equal(out.statusCode, 200);
+  assert.deepEqual(out.body, { deletedCount: 2, scanCount: 0, scans: [] });
+  assert.equal(req.user.account.scanCount, 0);
+  assert.equal(persisted, true);
+});
+
+test('deleteAllSavedScans requires auth and attached storage', async () => {
+  const ScanController = require('../controllers/scanController');
+  const ctrl = new ScanController({
+    mockScanResults,
+    scanRunner: mockScanRunner,
+    authService: {},
+    storageService: {},
+  });
+  const out = mockRes();
+  await ctrl.deleteAllSavedScans(
+    {
+      isAuthenticated: () => false,
+      user: null,
+    },
+    out.res,
+  );
+  assert.equal(out.statusCode, 401);
+});

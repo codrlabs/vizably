@@ -194,6 +194,11 @@ summary) must be atomic or partial-write tolerant:
 ### Deleting a scan
 
 `DELETE /api/scans/:id` removes one immutable file `scans/<scanId>_<host>.json`
+and refreshes `scans/index.json` + `vizably.json` summary caches.
+
+`DELETE /api/scans` removes **all** immutable scan files under `scans/` (except
+`index.json`), then writes an empty index and `summary.scanCount: 0`. The
+account manifest identity and repository remain.
 and refreshes rebuildable caches (`scans/index.json` + manifest `summary`).
 Other scan files and account identity stay. GitHub history may still contain
 the deleted blob unless history is rewritten — disclose that in the UI if you

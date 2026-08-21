@@ -30,7 +30,8 @@ Vizably has **no scan database**. Saved reports live in storage the user owns
 **Not in scope for #112**
 
 - Whole-account wipe / optional repo delete (that’s [#82](https://github.com/codrlabs/vizably/issues/82) / account deletion).
-- Bulk “delete all” on Account settings (still a later phase).
+- Bulk “delete all” on Account settings — that’s [#110](https://github.com/codrlabs/vizably/issues/110)
+  (`DELETE /api/scans`).
 - Rewriting Git history — after delete, GitHub history may still contain the blob;
   disclose that lightly in UI copy if you mention permanence.
 

@@ -31,6 +31,7 @@ class ScanController {
     this.getSavedScan = this.getSavedScan.bind(this);
     this.getSavedScans = this.getSavedScans.bind(this);
     this.deleteSavedScan = this.deleteSavedScan.bind(this);
+    this.deleteAllSavedScans = this.deleteAllSavedScans.bind(this);
     this.getProblem = this.getProblem.bind(this);
   }
 
@@ -161,6 +162,61 @@ class ScanController {
     } catch (err) {
       if (err.code === 'SCAN_NOT_FOUND' || err.status === 404) {
         return res.status(404).json({ error: 'Scan not found' });
+      }
+      if (
+        err.code === 'STORAGE_ACCESS_DENIED' ||
+        err.code === 'STORAGE_IDENTITY_MISMATCH' ||
+        err.status === 403
+      ) {
+        return res.status(403).json({ error: err.message });
+      }
+      console.error(err);
+      return res.status(500).json({ error: 'Internal server error' });
+    }
+  }
+
+  /**
+   * DELETE /api/scans — remove every saved report from attached storage.
+   * Keeps the account manifest and repository; only clears scan files + caches.
+   */
+  async deleteAllSavedScans(req, res) {
+    if (
+      typeof req.isAuthenticated !== 'function' ||
+      !req.isAuthenticated() ||
+      !req.user?.storage
+    ) {
+      return res.status(401).json({ error: 'Not authenticated' });
+    }
+    if (!this.authService || !this.storageService) {
+      return res.status(503).json({ error: 'Storage is not configured' });
+    }
+
+    try {
+      const clients = await this.authService.clientsFor(req.user, {
+        storageRef: req.user.storage,
+      });
+      const result = await this.storageService.deleteAllScans(req.user, clients);
+
+      if (!req.user.account) {
+        req.user.account = {
+          settings: { autoDelete90d: true },
+          scanCount: 0,
+        };
+      }
+      req.user.account.scanCount = result.scanCount;
+      await this.authService.persistUser(req);
+
+      return res.json({
+        deletedCount: result.deletedCount,
+        scanCount: result.scanCount,
+        scans: result.scans,
+      });
+    } catch (err) {
+      if (err.code === 'PROVIDER_NOT_AVAILABLE' || err.status === 501) {
+        return res.status(501).json({
+          error: err.message,
+          code: err.code,
+        });
       }
       if (
         err.code === 'STORAGE_ACCESS_DENIED' ||
