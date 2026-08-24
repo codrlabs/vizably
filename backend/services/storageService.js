@@ -7,12 +7,9 @@
  */
 const crypto = require('crypto');
 const { randomUUID } = require('crypto');
-<<<<<<< HEAD
 const { normalizeGitHubRepoName } = require('../../shared/githubRepoName');
 const { collectAllGitHubPages, findInGitHubPages } = require('./githubPagination');
-=======
 const { applyVizablyRepoPrefix } = require('../../shared/githubRepoName');
->>>>>>> b850685 (feat: apply viz_ prefix on GitHub create and availability checks)
 
 const MANIFEST_PATH = 'vizably.json';
 /** Pre-rename store root — still loadable; rewritten to `MANIFEST_PATH` on load. */
