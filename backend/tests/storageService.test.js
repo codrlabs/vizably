@@ -446,7 +446,7 @@ test('createGitHubRepository skips install hop when installation covers all repo
 test('createGitHubRepository finds writable install when repo is past first page', async () => {
   const storageService = new StorageService();
   const repos = Array.from({ length: 101 }, (_, i) =>
-    i === 100 ? 'sam/vizably-new' : `sam/other-${i}`,
+    i === 100 ? 'sam/viz_paged' : `sam/other-${i}`,
   );
   const client = createMockGitHubClient({
     installationProbe: [
@@ -457,10 +457,11 @@ test('createGitHubRepository finds writable install when repo is past first page
       },
     ],
   });
-  const result = await storageService.createGitHubRepository('vizably-new', {
+  const result = await storageService.createGitHubRepository('paged', {
     githubUserClient: client,
   });
   assert.equal(result.needsInstall, false);
+  assert.equal(result.storageRef.full_name, 'sam/viz_paged');
 });
 
 test('createGitHubRepository finds writable install when installation is past first page', async () => {
@@ -468,13 +469,14 @@ test('createGitHubRepository finds writable install when installation is past fi
   const installationProbe = Array.from({ length: 101 }, (_, i) => ({
     id: i + 1,
     contents: 'write',
-    repos: i === 100 ? ['sam/vizably-new'] : [`sam/other-${i}`],
+    repos: i === 100 ? ['sam/viz_paged'] : [`sam/other-${i}`],
   }));
   const client = createMockGitHubClient({ installationProbe });
-  const result = await storageService.createGitHubRepository('vizably-new', {
+  const result = await storageService.createGitHubRepository('paged', {
     githubUserClient: client,
   });
   assert.equal(result.needsInstall, false);
+  assert.equal(result.storageRef.full_name, 'sam/viz_paged');
 });
 
 test('createGitHubRepository surfaces rate limits instead of needsInstall', async () => {
