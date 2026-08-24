@@ -7,9 +7,13 @@
  */
 const crypto = require('crypto');
 const { randomUUID } = require('crypto');
-const { normalizeGitHubRepoName } = require('../../shared/githubRepoName');
+const {
+  applyVizablyRepoPrefix,
+  nextVizablyStoreName,
+  normalizeGitHubRepoName,
+  VIZABLY_DEFAULT_STORE_NAME,
+} = require('../../shared/githubRepoName');
 const { collectAllGitHubPages, findInGitHubPages } = require('./githubPagination');
-const { applyVizablyRepoPrefix } = require('../../shared/githubRepoName');
 
 const MANIFEST_PATH = 'vizably.json';
 /** Pre-rename store root — still loadable; rewritten to `MANIFEST_PATH` on load. */
@@ -214,6 +218,162 @@ class StorageService {
       : null;
 
     return { storageRef, needsInstall, installUrl };
+  }
+
+  /**
+   * Create the next unused default store: `viz_scans`, then `viz_scans-2`, …
+   *
+   * @param {StorageClients} clients
+   * @param {object} [options]
+   * @param {string} [options.installUrl]
+   */
+  async createNextVizablyGitHubRepository(clients, options = {}) {
+    const taken = [];
+    for (let n = 1; n <= 50; n += 1) {
+      const name = nextVizablyStoreName(taken);
+      try {
+        return await this.createGitHubRepository(name, clients, options);
+      } catch (err) {
+        if (err.code === 'REPO_NAME_TAKEN') {
+          taken.push(name);
+          continue;
+        }
+        throw err;
+      }
+    }
+    const err = new Error('Could not find an available Vizably repository name');
+    err.status = 422;
+    err.code = 'REPO_NAME_TAKEN';
+    throw err;
+  }
+
+  /**
+   * Find existing Vizably account stores (manifest-based, provider-neutral).
+   * Order: session storageRef → GET expected name (`viz_scans`) → list repos.
+   *
+   * @param {'github' | 'google'} provider
+   * @param {StorageClients} clients
+   * @param {object} [options]
+   * @param {object} [options.sessionStorageRef]
+   * @returns {Promise<{
+   *   provider: string,
+   *   stores: Array<{ storageRef: object, validation: object }>,
+   *   source: 'session' | 'expected-name' | 'list' | null,
+   * }>}
+   */
+  async discoverAccountStores(provider, clients, options = {}) {
+    if (provider === 'google') {
+      return { provider, stores: [], source: null };
+    }
+    if (provider !== 'github') {
+      throw new Error('Unsupported storage provider');
+    }
+    return this._discoverGitHubAccountStores(clients, options);
+  }
+
+  /**
+   * @param {StorageClients} clients
+   * @param {{ sessionStorageRef?: object }} [options]
+   * @private
+   */
+  async _discoverGitHubAccountStores(clients, { sessionStorageRef } = {}) {
+    const octokit = clients.githubUserClient ?? clients.githubClient;
+    if (!octokit) {
+      throw new Error('GitHub client is required to discover storage');
+    }
+
+    const consider = async (storageRef) => {
+      const validation = await this.validateStorage('github', storageRef, clients);
+      if (!this._isDiscoveredAccountStore(validation)) {
+        return null;
+      }
+      return {
+        storageRef: {
+          id: storageRef.id,
+          full_name: storageRef.full_name,
+          html_url: storageRef.html_url,
+          name: storageRef.name || storageRef.full_name?.split('/')[1],
+        },
+        validation,
+      };
+    };
+
+    if (sessionStorageRef?.full_name || sessionStorageRef?.id) {
+      try {
+        const hit = await consider(sessionStorageRef);
+        if (hit) {
+          return { provider: 'github', stores: [hit], source: 'session' };
+        }
+      } catch {
+        // Stale session ref — fall through to name GET / listing.
+      }
+    }
+
+    let owner;
+    try {
+      const { data: user } = await octokit.rest.users.getAuthenticated();
+      owner = user.login;
+    } catch (err) {
+      throw new Error(
+        err?.status === 401
+          ? 'GitHub authentication failed. Sign out and sign in again.'
+          : 'Could not look up your GitHub username.',
+      );
+    }
+
+    try {
+      const { data: repo } = await octokit.rest.repos.get({
+        owner,
+        repo: VIZABLY_DEFAULT_STORE_NAME,
+      });
+      const hit = await consider({
+        id: repo.node_id,
+        full_name: repo.full_name,
+        html_url: repo.html_url,
+        name: repo.name,
+      });
+      if (hit) {
+        return { provider: 'github', stores: [hit], source: 'expected-name' };
+      }
+    } catch (err) {
+      if (err?.status === 429 || (err?.status === 403 && /rate limit/i.test(String(err.message)))) {
+        throw err;
+      }
+    }
+
+    const repos = await this.listGitHubRepos(octokit);
+    const stores = [];
+    for (const repo of repos) {
+      try {
+        const hit = await consider({
+          id: repo.id,
+          full_name: repo.full_name,
+          html_url: repo.html_url,
+        });
+        if (hit) {
+          stores.push(hit);
+        }
+      } catch {
+        // Skip repos we cannot inspect.
+      }
+    }
+    return { provider: 'github', stores, source: 'list' };
+  }
+
+  /**
+   * A discovered account store is identified by vizably.json (or legacy
+   * equalview.json), never by repository name.
+   * @param {{ status?: string, reason?: string | null }} validation
+   * @private
+   */
+  _isDiscoveredAccountStore(validation) {
+    if (!validation) {
+      return false;
+    }
+    if (validation.status === 'loadable' || validation.status === 'incompatible') {
+      return true;
+    }
+    return validation.status === 'invalid' && validation.reason === 'malformed_manifest';
   }
 
   /**

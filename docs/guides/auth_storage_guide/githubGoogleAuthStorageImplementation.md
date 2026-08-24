@@ -15,10 +15,12 @@ account travels with the user's repo/folder, they can sign in from any device,
 server-side data, no lock-in, no per-user hosting cost. That is what makes it
 cheap to offer to as many people as possible.
 
-The defining UX is **browse → select → validate → load-or-init**:
+The defining UX is **sign in → discover or create → load-or-init**:
 
 1. The user connects GitHub or Google (OAuth).
-2. They **see the repos/folders they already have** and **select one**.
+2. Vizably **discovers** an existing account store (`vizably.json`) or
+   **creates** the next default location (`viz_scans`, then `viz_scans-2`, …).
+   A chooser appears only when two or more stores are found.
 3. vizably **validates** whether that storage *fits the data needed to load
    the account back* (a "fit-check").
 4. Depending on the result, vizably **loads** the existing account or
@@ -51,10 +53,10 @@ Provider redirects to /api/auth/{provider}/callback with auth code
 Backend exchanges code for tokens → encrypts tokens → stores in session
          │
          ▼
-User lands on ConnectView — the storage picker
+User lands on ConnectView — one Connect action
          │
-         ├─ GitHub: backend lists the user's repos      → user selects one
-         └─ Google: Google Picker lists Drive folders    → user selects one
+         ├─ GitHub: discover vizably.json (or create viz_scans / viz_scans-2 / …)
+         └─ Google: same resolution model via Picker (Phase 3)
          │
          ▼
 Backend VALIDATES the selected storage (fit-check)
@@ -81,12 +83,11 @@ scans/index      scans/ dir                            (init or cancel)
    On scan: results appended to the user's storage (atomic write)
 ```
 
-The user can also choose **"Create a new repo/folder"** instead of selecting an
-existing one — that is just the `initializable` path against a freshly created
-store. For GitHub, Vizably always creates the repository as `viz_<name>`
-(for example `viz_scans`, `viz_reports`) so Vizably-managed storage is easy to
-recognize and harder to confuse with unrelated repos. The prefix is applied on
-create and name-availability checks; selecting an existing repo is unchanged.
+Connect does not ask the user to name or pick a repository. Vizably discovers
+an existing account store by looking for `vizably.json`, or creates `viz_scans`
+(then `viz_scans-2`, `viz_scans-3`, … if that name is taken). A chooser appears
+only when discovery finds two or more stores. GitHub's own permissions remain
+the account ACL — Vizably does not add an extra ownership check.
 
 ### Identity model — read this first
 
@@ -367,20 +368,20 @@ Session cookies, not Bearer tokens. All calls use `credentials: 'include'`; no
 For Google, selection is done with the **Google Picker** client library; the
 chosen folder id flows into `validateStorage` / `setupStorage`.
 
-### ConnectView — the picker (`frontend/src/views/ConnectView.jsx`)
+### ConnectView (`frontend/src/views/ConnectView.jsx`)
 
-Today this is a placeholder with hard-coded `existing` lists in
-`frontend/src/data/placeholders.js`. The real ConnectView:
+Connect is one action. Vizably discovers an existing account store by looking
+for `vizably.json` (never by matching the repo name), or creates `viz_scans`
+(`viz_scans-2`, … if taken). There is no name field and no repository picker
+in the normal flow. A chooser appears only when discovery finds two or more
+stores.
 
-1. **Lists real storage.** GitHub → `listStorages('github')`. Google → launch
-   Google Picker. Plus a persistent **"Create new"** option.
-2. **Validates on select.** On pick, call `validateStorage` and render the
-   fit-check result (status copy + scan count when `loadable`).
-3. **Offers the right action.** Button text follows status:
-   `loadable` → "Load my account", `initializable`/new → "Set up & continue",
-   `incompatible`/`invalid` → blocked with guidance.
-4. **Confirms.** `setupStorage(provider, storageRef, action)` → on success the
-   account (with `storage`) is attached; navigate to the dashboard.
+1. **Discover.** `discoverStorages('github')` — session `storageRef`, then GET
+   `viz_scans`, then list repos as a fallback.
+2. **Zero stores.** One button creates the next default name and inits it.
+3. **One store.** Fit-check copy + "Load my account" / "Set up & continue".
+4. **Two or more.** Chooser of discovered stores, then the same confirm action.
+5. **Confirms.** `setupStorage(provider, storageRef, action)` → dashboard.
 
 ### App routes (`frontend/src/App.jsx`)
 
@@ -539,7 +540,7 @@ repo without asking the user to leave and create one manually.
 
 ### GitHub (Octokit)
 ```js
-// List repos the user can write (for the picker)
+// List repos (discovery fallback when session ref and viz_scans GET miss)
 await octokit.repos.listForAuthenticatedUser({ visibility: 'all', per_page: 100 });
 
 // Existence / fit-check read — get the manifest blob

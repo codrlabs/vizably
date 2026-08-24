@@ -7,7 +7,8 @@
 > Verify each item against the actual code before ticking it.
 >
 > **Model in one line:** the user's GitHub repo / Drive folder *is* the account.
-> Flow is **browse → select → validate (fit-check) → load or init**. No project DB.
+> Flow is **sign in → discover or create → validate (fit-check) → load or init**.
+> No project DB. GitHub Connect is one action (no name field / repo picker).
 
 ---
 
@@ -156,17 +157,21 @@ Provider-neutral API shape; **GitHub picker wired**, Google deferred to Phase 3.
 - [x] Keep `runScan`, `getScanResults`, `getProblem`
 - [x] `deleteScan(id)` → `DELETE /api/scans/:id`
 
-### ConnectView (`frontend/src/views/ConnectView.jsx`) — the picker
+### ConnectView (`frontend/src/views/ConnectView.jsx`)
 
-- [x] GitHub: list repos via `listStorages('github')`
+GitHub Connect is one action. Vizably discovers or creates the store; the user
+does not name or pick a repository in the normal flow.
+
+- [x] Discover stores via `GET /api/auth/storage/discover` (session ref →
+      `viz_scans` GET → list + `vizably.json`)
+- [x] No repository name field; no "Use an existing repository" picker
+- [x] Zero stores → one button creates `viz_scans` / `viz_scans-2` / … and inits
+- [x] One store → load or init automatically selected
+- [x] Two or more stores → chooser for that ambiguity only
 - [x] Google Picker deferred to Phase 3 (hide or disable Google connect path)
-- [x] Persistent **"Create new"** option (the `init` path on a fresh store)
-- [x] On select → `validateStorage` → render fit-check status + scan count
-- [x] Action button follows status: `loadable`→"Load my account",
-      `initializable`/new→"Set up & continue", `incompatible`/`invalid`→blocked + guidance
+- [x] Action button follows fit-check status
 - [x] Disable init when `capabilities.canWrite === false`
 - [x] On confirm → `setupStorage(provider, storageRef, action)` → dashboard
-- [x] Replace hard-coded `existing` lists in `frontend/src/data/placeholders.js`
 - [x] `ConnectView` — accept a `storageError` prop for failures
 
 ### App Routes (`frontend/src/App.jsx`)

@@ -126,6 +126,32 @@ function makeAuthRouter({ authService, storageService }) {
     }
   });
 
+  router.get('/storage/discover', requireAuth, async (req, res) => {
+    try {
+      const provider = req.query.provider || 'github';
+      if (provider !== 'github') {
+        return res.status(400).json({
+          error: 'Only provider=github is supported in Phase 1',
+        });
+      }
+
+      const clients = await authService.clientsFor(req.user);
+      if (!clients.githubUserClient && !clients.githubClient) {
+        return res.status(400).json({ error: 'GitHub client is not available' });
+      }
+
+      const result = await storageService.discoverAccountStores(provider, clients, {
+        sessionStorageRef: req.user?.storage || null,
+      });
+      return res.json(result);
+    } catch (err) {
+      console.error(err);
+      return res.status(500).json({
+        error: err.message || 'Failed to discover storage',
+      });
+    }
+  });
+
   router.post('/storage/create', requireAuth, async (req, res) => {
     try {
       const { name, provider = 'github' } = req.body || {};
@@ -134,9 +160,6 @@ function makeAuthRouter({ authService, storageService }) {
           error: 'Only provider=github is supported for repository creation',
         });
       }
-      if (!name || typeof name !== 'string') {
-        return res.status(400).json({ error: 'name is required' });
-      }
 
       const clients = await authService.clientsFor(req.user);
       if (!clients.githubUserClient && !clients.githubClient) {
@@ -144,9 +167,10 @@ function makeAuthRouter({ authService, storageService }) {
       }
 
       const installUrl = await authService.getInstallationSetupUrl();
-      const result = await storageService.createGitHubRepository(name, clients, {
-        installUrl,
-      });
+      const result =
+        typeof name === 'string' && name.trim()
+          ? await storageService.createGitHubRepository(name.trim(), clients, { installUrl })
+          : await storageService.createNextVizablyGitHubRepository(clients, { installUrl });
       return res.status(201).json({
         provider: 'github',
         storageRef: result.storageRef,

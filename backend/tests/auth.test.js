@@ -388,18 +388,64 @@ test('POST /api/auth/storage/create returns storageRef and needsInstall', async 
   assert.match(res.body.installUrl, /installations\/new/);
 });
 
-test('POST /api/auth/storage/create requires name', async () => {
+test('GET /api/auth/storage/discover returns discovered stores', async () => {
   const app = createAuthedApp({
     user: AUTHED_USER,
     authService: {
-      clientsFor: async () => ({ githubUserClient: {} }),
-      getInstallationSetupUrl: async () => 'https://github.com/settings/installations',
+      clientsFor: async () => ({ githubUserClient: { mock: true } }),
     },
-    storageService: {},
+    storageService: {
+      discoverAccountStores: async (provider, _clients, options) => {
+        assert.equal(provider, 'github');
+        assert.equal(options.sessionStorageRef, AUTHED_USER.storage);
+        return {
+          provider: 'github',
+          stores: [
+            {
+              storageRef: {
+                id: 'R_kg',
+                full_name: 'sam/viz_scans',
+                html_url: 'https://github.com/sam/viz_scans',
+              },
+              validation: { status: 'loadable' },
+            },
+          ],
+          source: 'expected-name',
+        };
+      },
+    },
   });
-  const res = await request(app).post('/api/auth/storage/create').send({});
-  assert.equal(res.status, 400);
-  assert.match(res.body.error, /name is required/);
+  const res = await request(app).get('/api/auth/storage/discover?provider=github');
+  assert.equal(res.status, 200);
+  assert.equal(res.body.source, 'expected-name');
+  assert.equal(res.body.stores[0].storageRef.full_name, 'sam/viz_scans');
+});
+
+test('POST /api/auth/storage/create uses the default store when name is omitted', async () => {
+  const app = createAuthedApp({
+    user: AUTHED_USER,
+    authService: {
+      clientsFor: async () => ({ githubUserClient: { mock: true } }),
+      getInstallationSetupUrl: async () =>
+        'https://github.com/apps/vizably/installations/new',
+    },
+    storageService: {
+      createNextVizablyGitHubRepository: async (_clients, options) => ({
+        storageRef: {
+          id: 'R_kgNew',
+          name: 'viz_scans',
+          full_name: 'sam/viz_scans',
+          private: true,
+          html_url: 'https://github.com/sam/viz_scans',
+        },
+        needsInstall: false,
+        installUrl: options.installUrl,
+      }),
+    },
+  });
+  const res = await request(app).post('/api/auth/storage/create').send({ provider: 'github' });
+  assert.equal(res.status, 201);
+  assert.equal(res.body.storageRef.name, 'viz_scans');
 });
 
 test('POST /api/auth/storage/create returns probe failures without needsInstall', async () => {

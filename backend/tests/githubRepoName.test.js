@@ -44,3 +44,13 @@ test('applyVizablyRepoPrefix returns empty for blank input', () => {
   assert.equal(applyVizablyRepoPrefix('   '), '');
   assert.equal(applyVizablyRepoPrefix(null), '');
 });
+
+test('nextVizablyStoreName starts at viz_scans then increments', () => {
+  const {
+    nextVizablyStoreName,
+    VIZABLY_DEFAULT_STORE_NAME,
+  } = require('../../shared/githubRepoName');
+  assert.equal(nextVizablyStoreName([]), VIZABLY_DEFAULT_STORE_NAME);
+  assert.equal(nextVizablyStoreName(['viz_scans']), 'viz_scans-2');
+  assert.equal(nextVizablyStoreName(['viz_scans', 'viz_scans-2']), 'viz_scans-3');
+});

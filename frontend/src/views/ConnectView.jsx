@@ -3,10 +3,7 @@ import { Button, Card } from '../design-system'
 import { Ico, GoogleMark } from '../lib/icons'
 import { apiClient } from '../lib/apiClient'
 import { PROVIDERS } from '../data/placeholders'
-import {
-  applyVizablyRepoPrefix,
-  VIZABLY_REPO_PREFIX,
-} from '../utils/githubRepoName'
+import { VIZABLY_DEFAULT_STORE_NAME } from '../utils/githubRepoName'
 
 const STATUS_UI = {
   loadable: {
@@ -65,101 +62,18 @@ function reasonMessage(reason) {
   }
 }
 
-function storageRefFromRepo(repo) {
+function storageRefFromHit(hit) {
+  const ref = hit.storageRef || hit
   return {
-    id: repo.id,
-    full_name: repo.full_name,
-    html_url: repo.html_url,
+    id: ref.id,
+    full_name: ref.full_name,
+    html_url: ref.html_url,
+    name: ref.name,
   }
 }
 
-function findRepoByName(storages, name) {
-  const trimmed = name.trim()
-  if (!trimmed) return null
-  const prefixed = applyVizablyRepoPrefix(trimmed) || trimmed
-  return (
-    storages.find((r) => r.name === trimmed) ||
-    storages.find((r) => r.name === prefixed) ||
-    storages.find((r) => r.full_name === trimmed) ||
-    storages.find((r) => r.full_name.endsWith(`/${trimmed}`)) ||
-    storages.find((r) => r.full_name.endsWith(`/${prefixed}`)) ||
-    null
-  )
-}
-
-const NAME_CHECK_DEBOUNCE_MS = 400
-
 /**
- * Stable option card — must live outside ConnectView so typing into nested
- * inputs does not remount this tree (and steal focus) on every keystroke.
- */
-function ConnectOption({ active, onSelect, icon, title, desc, children }) {
-  return (
-    <div
-      onClick={onSelect}
-      style={{
-        border: `1.5px solid ${active ? 'var(--accent)' : 'var(--border-default)'}`,
-        background: active ? 'var(--accent-subtle)' : 'var(--surface-card)',
-        borderRadius: 'var(--radius-md)',
-        padding: 'var(--space-4)',
-        cursor: 'pointer',
-        transition:
-          'border-color var(--duration-fast) var(--ease-standard), background var(--duration-fast) var(--ease-standard)',
-      }}
-    >
-      <div style={{ display: 'flex', alignItems: 'flex-start', gap: 12 }}>
-        <span
-          style={{
-            flexShrink: 0,
-            width: 22,
-            height: 22,
-            marginTop: 1,
-            borderRadius: '50%',
-            border: `2px solid ${active ? 'var(--accent)' : 'var(--border-strong)'}`,
-            display: 'inline-flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-          }}
-        >
-          {active && (
-            <span
-              style={{
-                width: 10,
-                height: 10,
-                borderRadius: '50%',
-                background: 'var(--accent)',
-              }}
-            />
-          )}
-        </span>
-        <div style={{ flex: 1 }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-            <span style={{ color: active ? 'var(--accent)' : 'var(--text-muted)' }}>
-              {Ico(icon, 17, 'currentColor')}
-            </span>
-            <span style={{ font: 'var(--font-label)', color: 'var(--text-strong)' }}>
-              {title}
-            </span>
-          </div>
-          <p
-            style={{
-              fontSize: 'var(--text-sm)',
-              color: 'var(--text-muted)',
-              margin: '4px 0 0',
-              lineHeight: 1.45,
-            }}
-          >
-            {desc}
-          </p>
-          {active && children && <div style={{ marginTop: 12 }}>{children}</div>}
-        </div>
-      </div>
-    </div>
-  )
-}
-
-/**
- * Connect storage — pick a GitHub repo, run fit-check, load or init account.
+ * Connect storage — discover or create the Vizably store, then load or init.
  *
  * @param {object} props
  * @param {'github' | 'google'} props.provider
@@ -178,229 +92,129 @@ export default function ConnectView({
   const pv = PROVIDERS[provider] || PROVIDERS.github
   const isGitHub = provider === 'github'
 
-  const [mode, setMode] = useState('existing')
-  const [newRepoName, setNewRepoName] = useState(pv.dest)
-  const [storages, setStorages] = useState([])
+  const [stores, setStores] = useState([])
   const [selectedId, setSelectedId] = useState('')
-  const [createdStorageRef, setCreatedStorageRef] = useState(null)
+  const [createdRef, setCreatedRef] = useState(null)
+  const [validation, setValidation] = useState(null)
   const [needsInstall, setNeedsInstall] = useState(false)
   const [installUrl, setInstallUrl] = useState(null)
-  const [validation, setValidation] = useState(null)
-  const [loadingRepos, setLoadingRepos] = useState(false)
+  const [discovering, setDiscovering] = useState(false)
   const [creating, setCreating] = useState(false)
   const [validating, setValidating] = useState(false)
   const [confirming, setConfirming] = useState(false)
   const [error, setError] = useState(storageError)
-  const [listError, setListError] = useState(null)
-  const [nameAvailability, setNameAvailability] = useState(null)
-  const [checkingName, setCheckingName] = useState(false)
 
-  const selectedRepo = useMemo(
-    () => storages.find((r) => r.id === selectedId) ?? null,
-    [storages, selectedId],
+  const selectedHit = useMemo(
+    () => stores.find((hit) => hit.storageRef.id === selectedId) ?? null,
+    [stores, selectedId],
   )
 
-  const activeStorageRef = useMemo(() => {
-    if (!isGitHub) return null
-    if (mode === 'existing') {
-      return selectedRepo ? storageRefFromRepo(selectedRepo) : null
-    }
-    if (createdStorageRef) {
-      return {
-        id: createdStorageRef.id,
-        full_name: createdStorageRef.full_name,
-        html_url: createdStorageRef.html_url,
-      }
-    }
-    const match = findRepoByName(storages, newRepoName)
-    return match ? storageRefFromRepo(match) : null
-  }, [isGitHub, mode, selectedRepo, storages, newRepoName, createdStorageRef])
+  const activeStorageRef = createdRef || (selectedHit ? storageRefFromHit(selectedHit) : null)
+  const statusUi = validation ? STATUS_UI[validation.status] : null
+  const proposedAction = statusUi?.action ?? null
+  const canWrite = validation?.capabilities?.canWrite !== false
+  const initBlocked = proposedAction === 'init' && validation && !canWrite
+  const emptyAccount = stores.length === 0 && !createdRef
+  const ambiguous = stores.length > 1 && !createdRef
 
-  const loadStorages = useCallback(async () => {
-    if (!isGitHub) return
-    setLoadingRepos(true)
-    setListError(null)
+  const confirmBlocked =
+    needsInstall ||
+    (!emptyAccount &&
+      (!validation ||
+        !proposedAction ||
+        validation.status === 'incompatible' ||
+        validation.status === 'invalid' ||
+        initBlocked ||
+        !activeStorageRef))
+
+  const confirmLabel = useMemo(() => {
+    if (emptyAccount) return 'Set up Vizably storage'
+    if (statusUi?.button) return statusUi.button
+    return 'Continue'
+  }, [emptyAccount, statusUi])
+
+  const runValidation = useCallback(
+    async (storageRef) => {
+      if (!storageRef) {
+        setValidation(null)
+        return
+      }
+      setValidating(true)
+      setError(null)
+      try {
+        const result = await client.validateStorage('github', storageRef)
+        setValidation(result)
+        if (result?.capabilities?.canWrite) {
+          setNeedsInstall(false)
+        }
+      } catch (err) {
+        setValidation(null)
+        setError(err.message || 'Failed to validate storage')
+      } finally {
+        setValidating(false)
+      }
+    },
+    [client],
+  )
+
+  const loadDiscovery = useCallback(async () => {
+    if (!isGitHub) return []
+    setDiscovering(true)
+    setError(null)
     try {
-      const result = await client.listStorages('github')
-      const list = result.storages ?? []
-      setStorages(list)
-      setSelectedId((prev) => prev || list[0]?.id || '')
+      const result = await client.discoverStorages('github')
+      const list = result.stores ?? []
+      setStores(list)
+      setSelectedId((prev) => {
+        if (prev && list.some((hit) => hit.storageRef.id === prev)) return prev
+        return list[0]?.storageRef.id || ''
+      })
       return list
     } catch (err) {
-      setListError(err.message || 'Failed to load repositories')
-      setStorages([])
+      setError(err.message || 'Failed to look up Vizably storage')
+      setStores([])
       setSelectedId('')
       return []
     } finally {
-      setLoadingRepos(false)
+      setDiscovering(false)
     }
   }, [client, isGitHub])
 
   useEffect(() => {
-    loadStorages()
-  }, [loadStorages])
+    loadDiscovery()
+  }, [loadDiscovery])
 
   useEffect(() => {
     setError(storageError)
   }, [storageError])
 
   useEffect(() => {
-    if (!isGitHub || mode !== 'new' || createdStorageRef) {
-      setNameAvailability(null)
-      setCheckingName(false)
-      return undefined
-    }
-
-    const trimmed = newRepoName.trim()
-    if (!trimmed) {
-      setNameAvailability(null)
-      setCheckingName(false)
-      return undefined
-    }
-
-    // Instant feedback when the loaded repo list already contains this name.
-    const localMatch = findRepoByName(storages, trimmed)
-    if (localMatch) {
-      setCheckingName(false)
-      setNameAvailability({
-        name: trimmed,
-        normalizedName: localMatch.name,
-        full_name: localMatch.full_name,
-        status: 'taken',
-        message: `A repository named "${localMatch.name}" already exists on your account.`,
-      })
-      return undefined
-    }
-
-    let cancelled = false
-    setCheckingName(true)
-    const timer = setTimeout(async () => {
-      try {
-        const result = await client.checkRepoNameAvailability(trimmed)
-        if (!cancelled) {
-          setNameAvailability(result)
-        }
-      } catch (err) {
-        if (!cancelled) {
-          setNameAvailability({
-            name: trimmed,
-            normalizedName: null,
-            full_name: null,
-            status: 'error',
-            message: err.message || 'Could not check repository name availability.',
-          })
-        }
-      } finally {
-        if (!cancelled) {
-          setCheckingName(false)
-        }
-      }
-    }, NAME_CHECK_DEBOUNCE_MS)
-
-    return () => {
-      cancelled = true
-      clearTimeout(timer)
-    }
-  }, [isGitHub, mode, newRepoName, client, createdStorageRef, storages])
-
-  const runValidation = useCallback(async (storageRef) => {
-    if (!storageRef) {
+    if (!isGitHub) return
+    if (needsInstall) {
       setValidation(null)
       return
     }
-    setValidating(true)
-    setError(null)
-    try {
-      const result = await client.validateStorage('github', storageRef)
-      setValidation(result)
-      if (result?.capabilities?.canWrite) {
-        setNeedsInstall(false)
-      }
-    } catch (err) {
-      setValidation(null)
-      setError(err.message || 'Failed to validate storage')
-    } finally {
-      setValidating(false)
-    }
-  }, [client])
-
-  useEffect(() => {
-    if (!isGitHub || !activeStorageRef) {
-      setValidation(null)
+    if (createdRef) {
+      runValidation(createdRef)
       return
     }
-    if (needsInstall && mode === 'new') {
+    if (selectedHit) {
+      setValidation(selectedHit.validation)
+    } else {
       setValidation(null)
-      return
     }
-    runValidation(activeStorageRef)
-  }, [isGitHub, activeStorageRef, runValidation, needsInstall, mode])
+  }, [isGitHub, createdRef, selectedHit, needsInstall, runValidation])
 
-  const statusUi = validation ? STATUS_UI[validation.status] : null
-  const proposedAction = statusUi?.action ?? null
-  const canWrite = validation?.capabilities?.canWrite !== false
-  const initBlocked = proposedAction === 'init' && validation && !canWrite
-  const awaitingCreate =
-    mode === 'new' && !activeStorageRef && Boolean(newRepoName.trim())
-  const nameUnavailable =
-    awaitingCreate &&
-    (checkingName ||
-      !nameAvailability ||
-      nameAvailability.status === 'taken' ||
-      nameAvailability.status === 'invalid')
-  const confirmBlocked =
-    !validation ||
-    !proposedAction ||
-    validation.status === 'incompatible' ||
-    validation.status === 'invalid' ||
-    initBlocked ||
-    (mode === 'new' && needsInstall) ||
-    (mode === 'new' && !activeStorageRef)
-
-  const confirmLabel = useMemo(() => {
-    if (awaitingCreate) return 'Create repository'
-    if (statusUi?.button) return statusUi.button
-    return 'Continue'
-  }, [awaitingCreate, statusUi])
-
-  const primaryDisabled =
-    creating ||
-    confirming ||
-    validating ||
-    (mode === 'new' && needsInstall) ||
-    (awaitingCreate ? nameUnavailable : confirmBlocked)
-
-  const handleCreateRepo = async () => {
-    const name = applyVizablyRepoPrefix(newRepoName)
-    if (!name || creating || nameUnavailable) return
-
-    // Keep the editable suffix in sync with whitespace normalization.
-    const suffix = name.slice(VIZABLY_REPO_PREFIX.length)
-    if (suffix !== newRepoName) {
-      setNewRepoName(suffix)
-    }
-
+  const handleCreateDefault = async () => {
+    if (creating) return
     setCreating(true)
     setError(null)
     setNeedsInstall(false)
     setInstallUrl(null)
     try {
-      const result = await client.createStorage(name)
-      const ref = result.storageRef
-      const asListItem = {
-        id: ref.id,
-        name: ref.name || ref.full_name?.split('/')[1],
-        full_name: ref.full_name,
-        private: ref.private ?? true,
-        html_url: ref.html_url,
-      }
-      setCreatedStorageRef(asListItem)
-      setStorages((prev) => {
-        if (prev.some((r) => r.id === asListItem.id)) return prev
-        return [asListItem, ...prev]
-      })
-      setSelectedId(asListItem.id)
-
+      const result = await client.createStorage()
+      const ref = storageRefFromHit({ storageRef: result.storageRef })
+      setCreatedRef(ref)
       if (result.needsInstall) {
         setNeedsInstall(true)
         setInstallUrl(result.installUrl)
@@ -408,34 +222,24 @@ export default function ConnectView({
       } else {
         setNeedsInstall(false)
         setInstallUrl(null)
-        await runValidation({
-          id: asListItem.id,
-          full_name: asListItem.full_name,
-          html_url: asListItem.html_url,
-        })
+        setConfirming(true)
+        try {
+          await client.setupStorage('github', ref, 'init')
+          onDone()
+        } catch (initErr) {
+          setError(initErr.message || 'Failed to connect storage')
+          await runValidation(ref)
+        } finally {
+          setConfirming(false)
+        }
       }
     } catch (err) {
-      // Probe failures (rate limit / network) may still return storageRef — keep
-      // the created repo selected without the "install App" CTA.
       if (err.storageRef) {
-        const ref = err.storageRef
-        const asListItem = {
-          id: ref.id,
-          name: ref.name || ref.full_name?.split('/')[1],
-          full_name: ref.full_name,
-          private: ref.private ?? true,
-          html_url: ref.html_url,
-        }
-        setCreatedStorageRef(asListItem)
-        setStorages((prev) => {
-          if (prev.some((r) => r.id === asListItem.id)) return prev
-          return [asListItem, ...prev]
-        })
-        setSelectedId(asListItem.id)
+        setCreatedRef(storageRefFromHit({ storageRef: err.storageRef }))
         setNeedsInstall(false)
         setInstallUrl(null)
       }
-      setError(err.message || 'Failed to create repository')
+      setError(err.message || 'Failed to create storage')
     } finally {
       setCreating(false)
     }
@@ -443,35 +247,27 @@ export default function ConnectView({
 
   const handleRefreshAfterInstall = async () => {
     setError(null)
-    const list = await loadStorages()
+    const list = await loadDiscovery()
     const match =
-      (createdStorageRef && list.find((r) => r.id === createdStorageRef.id)) ||
-      findRepoByName(list, newRepoName) ||
-      createdStorageRef
+      (createdRef && list.find((hit) => hit.storageRef.id === createdRef.id)) ||
+      createdRef
     if (!match) {
       setError(
         'Repository not found yet. Add it to the Vizably GitHub App installation, then refresh again.',
       )
       return
     }
-    const ref = storageRefFromRepo(match)
-    setCreatedStorageRef({
-      id: match.id,
-      name: match.name,
-      full_name: match.full_name,
-      private: match.private,
-      html_url: match.html_url,
-    })
+    const ref = storageRefFromHit(match.storageRef ? match : { storageRef: match })
+    setCreatedRef(ref)
     setNeedsInstall(false)
     await runValidation(ref)
   }
 
   const handleConfirm = async () => {
-    if (mode === 'new' && !activeStorageRef && newRepoName.trim()) {
-      await handleCreateRepo()
+    if (emptyAccount) {
+      await handleCreateDefault()
       return
     }
-
     if (confirmBlocked || !activeStorageRef || !proposedAction) return
 
     setConfirming(true)
@@ -487,69 +283,6 @@ export default function ConnectView({
   }
 
   const providerIcon = provider === 'google' ? GoogleMark(20) : Ico('Github', 20)
-
-  const nameCheckUi = (() => {
-    if (checkingName) {
-      return {
-        tone: 'checking',
-        label: 'Checking',
-        icon: 'Loader2',
-        color: 'var(--text-muted)',
-        bg: 'var(--bg-inset)',
-        border: 'var(--border-default)',
-        inputBorder: 'var(--border-strong)',
-        message: 'Checking availability…',
-      }
-    }
-    switch (nameAvailability?.status) {
-      case 'available':
-        return {
-          tone: 'available',
-          label: 'Available',
-          icon: 'CircleCheck',
-          color: 'var(--green-700)',
-          bg: 'var(--green-50)',
-          border: 'var(--green-100)',
-          inputBorder: 'var(--green-600)',
-          message: nameAvailability.message,
-        }
-      case 'taken':
-        return {
-          tone: 'taken',
-          label: 'Taken',
-          icon: 'CircleX',
-          color: 'var(--sev-serious-fg)',
-          bg: 'var(--sev-serious-bg)',
-          border: 'var(--sev-serious)',
-          inputBorder: 'var(--sev-serious)',
-          message: nameAvailability.message,
-        }
-      case 'invalid':
-        return {
-          tone: 'invalid',
-          label: 'Invalid',
-          icon: 'TriangleAlert',
-          color: 'var(--sev-serious-fg)',
-          bg: 'var(--sev-serious-bg)',
-          border: 'var(--sev-serious)',
-          inputBorder: 'var(--sev-serious)',
-          message: nameAvailability.message,
-        }
-      case 'error':
-        return {
-          tone: 'error',
-          label: 'Retry later',
-          icon: 'TriangleAlert',
-          color: 'var(--text-body)',
-          bg: 'var(--sev-moderate-bg)',
-          border: 'var(--sev-moderate)',
-          inputBorder: 'var(--sev-moderate)',
-          message: nameAvailability.message,
-        }
-      default:
-        return null
-    }
-  })()
 
   if (!isGitHub) {
     return (
@@ -608,7 +341,7 @@ export default function ConnectView({
             <span style={{ color: 'var(--green-600)' }}>{Ico('Check', 15, 'currentColor')}</span>
           </div>
           <h1 style={{ fontSize: 'var(--text-xl)', margin: '0 0 6px' }}>
-            Where should we save your scans?
+            Connect your Vizably storage
           </h1>
           <p
             style={{
@@ -618,12 +351,11 @@ export default function ConnectView({
               lineHeight: 1.5,
             }}
           >
-            Vizably writes each report to {pv.article} {pv.unit} in your {pv.name} — you stay in
-            control of it.
+            Vizably finds or creates a private {pv.unit} for your scans. You stay in control of it.
           </p>
         </div>
 
-        {(error || listError) && (
+        {error && (
           <div
             role="alert"
             style={{
@@ -637,326 +369,130 @@ export default function ConnectView({
               lineHeight: 1.45,
             }}
           >
-            {error || listError}
+            {error}
           </div>
         )}
 
         <Card padding="var(--space-5)">
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-            <ConnectOption
-              active={mode === 'new'}
-              onSelect={() => setMode('new')}
-              icon="Plus"
-              title={`Create a new ${pv.unit}`}
-              desc={`Create a fresh private ${pv.unitShort} under your GitHub account and set it up for Vizably.`}
-            >
-              <label
-                style={{
-                  display: 'block',
-                  font: 'var(--font-label)',
-                  fontSize: 'var(--text-xs)',
-                  color: 'var(--text-muted)',
-                  marginBottom: 5,
-                }}
-              >
-                {pv.unit.charAt(0).toUpperCase() + pv.unit.slice(1)} name
-              </label>
-              <div
-                style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: 8,
-                  height: 42,
-                  padding: '0 12px',
-                  background: 'var(--surface-card)',
-                  border: `1.5px solid ${nameCheckUi?.inputBorder || 'var(--border-strong)'}`,
-                  borderRadius: 'var(--radius-md)',
-                  transition:
-                    'border-color var(--duration-fast) var(--ease-standard), box-shadow var(--duration-fast) var(--ease-standard)',
-                  boxShadow:
-                    nameCheckUi?.tone === 'available'
-                      ? '0 0 0 3px color-mix(in srgb, var(--green-600) 14%, transparent)'
-                      : nameCheckUi?.tone === 'taken' || nameCheckUi?.tone === 'invalid'
-                        ? '0 0 0 3px color-mix(in srgb, var(--sev-serious) 16%, transparent)'
-                        : 'none',
-                }}
-              >
-                <span style={{ color: 'var(--text-faint)' }}>{Ico(pv.destIcon, 16)}</span>
-                <span
-                  aria-hidden="true"
+          {discovering ? (
+            <p style={{ fontSize: 'var(--text-sm)', color: 'var(--text-muted)', margin: 0 }}>
+              Looking for Vizably storage…
+            </p>
+          ) : emptyAccount ? (
+            <p style={{ fontSize: 'var(--text-sm)', color: 'var(--text-body)', margin: 0, lineHeight: 1.5 }}>
+              No Vizably account store yet. We&apos;ll create{' '}
+              <code style={{ font: 'var(--font-code)' }}>{VIZABLY_DEFAULT_STORE_NAME}</code>
+              {' '}(or the next free name) as a private repository under your GitHub account.
+            </p>
+          ) : ambiguous ? (
+            <div>
+              <p style={{ fontSize: 'var(--text-sm)', color: 'var(--text-body)', margin: '0 0 10px', lineHeight: 1.5 }}>
+                More than one Vizably store was found. Pick which one to use on this device.
+              </p>
+              <div style={{ position: 'relative' }}>
+                <select
+                  value={selectedId}
+                  onChange={(e) => setSelectedId(e.target.value)}
+                  aria-label="Choose Vizably storage"
                   style={{
-                    font: 'var(--font-code)',
-                    fontSize: 'var(--text-sm)',
-                    color: 'var(--text-muted)',
-                    userSelect: 'none',
-                  }}
-                >
-                  {VIZABLY_REPO_PREFIX}
-                </span>
-                <input
-                  value={newRepoName}
-                  onClick={(e) => e.stopPropagation()}
-                  onChange={(e) => {
-                    const next = e.target.value
-                    setNewRepoName(next)
-                    setNameAvailability(null)
-                    // Only clear create/install state when the typed name no longer
-                    // matches the repo we just created — avoids extra re-render churn.
-                    const nextPrefixed = applyVizablyRepoPrefix(next)
-                    if (
-                      createdStorageRef &&
-                      nextPrefixed !== createdStorageRef.name &&
-                      next.trim() !== createdStorageRef.full_name
-                    ) {
-                      setCreatedStorageRef(null)
-                      setNeedsInstall(false)
-                      setInstallUrl(null)
-                    }
-                  }}
-                  disabled={creating}
-                  aria-describedby="repo-name-availability repo-name-prefix-hint"
-                  placeholder="scans"
-                  style={{
-                    flex: 1,
-                    border: 'none',
-                    outline: 'none',
-                    font: 'var(--font-code)',
+                    width: '100%',
+                    height: 42,
+                    padding: '0 12px',
+                    borderRadius: 'var(--radius-md)',
+                    border: '1px solid var(--border-strong)',
+                    font: 'var(--font-sans)',
                     fontSize: 'var(--text-sm)',
                     color: 'var(--text-strong)',
-                    background: 'transparent',
+                    background: 'var(--surface-card)',
+                    appearance: 'none',
+                    cursor: 'pointer',
                   }}
-                />
-                {nameCheckUi && (
-                  <span
-                    className={nameCheckUi.tone === 'checking' ? 'ev-spin' : undefined}
-                    style={{
-                      display: 'inline-flex',
-                      color: nameCheckUi.color,
-                      transition: 'color var(--duration-fast) var(--ease-standard)',
-                    }}
-                    aria-hidden="true"
-                  >
-                    {Ico(nameCheckUi.icon, 16, 'currentColor')}
-                  </span>
-                )}
+                >
+                  {stores.map((hit) => (
+                    <option key={hit.storageRef.id} value={hit.storageRef.id}>
+                      {hit.storageRef.full_name}
+                      {hit.validation?.manifestSummary?.scanCount != null
+                        ? ` — ${hit.validation.manifestSummary.scanCount} scans`
+                        : ''}
+                    </option>
+                  ))}
+                </select>
+                <span
+                  style={{
+                    position: 'absolute',
+                    right: 12,
+                    top: '50%',
+                    transform: 'translateY(-50%)',
+                    pointerEvents: 'none',
+                    color: 'var(--text-muted)',
+                  }}
+                >
+                  {Ico('ChevronDown', 16)}
+                </span>
               </div>
-              {nameCheckUi && mode === 'new' && (
-                <div
-                  id="repo-name-availability"
-                  role="status"
-                  aria-live="polite"
-                  style={{
-                    display: 'flex',
-                    alignItems: 'flex-start',
-                    gap: 8,
-                    marginTop: 8,
-                    padding: '8px 10px',
-                    borderRadius: 'var(--radius-md)',
-                    background: nameCheckUi.bg,
-                    border: `1px solid ${nameCheckUi.border}`,
-                    animation: 'ev-fade-in 160ms var(--ease-standard)',
-                  }}
-                >
-                  <span
-                    style={{
-                      flexShrink: 0,
-                      marginTop: 1,
-                      display: 'inline-flex',
-                      alignItems: 'center',
-                      gap: 5,
-                      padding: '2px 7px',
-                      borderRadius: 'var(--radius-pill)',
-                      background: 'var(--surface-card)',
-                      border: `1px solid ${nameCheckUi.border}`,
-                      color: nameCheckUi.color,
-                      font: 'var(--font-label)',
-                      fontSize: 11,
-                      letterSpacing: '0.02em',
-                      textTransform: 'uppercase',
-                    }}
-                  >
-                    <span
-                      className={nameCheckUi.tone === 'checking' ? 'ev-spin' : undefined}
-                      style={{ display: 'inline-flex' }}
-                    >
-                      {Ico(nameCheckUi.icon, 12, 'currentColor')}
-                    </span>
-                    {nameCheckUi.label}
-                  </span>
-                  <p
-                    style={{
-                      margin: 0,
-                      fontSize: 'var(--text-xs)',
-                      color: nameCheckUi.color,
-                      lineHeight: 1.45,
-                    }}
-                  >
-                    {nameCheckUi.message}
-                  </p>
-                </div>
-              )}
-              <p
-                id="repo-name-prefix-hint"
-                style={{
-                  fontSize: 'var(--text-xs)',
-                  color: 'var(--text-muted)',
-                  margin: '8px 0 0',
-                  lineHeight: 1.45,
-                }}
-              >
-                Vizably creates the repo as{' '}
-                <code style={{ font: 'var(--font-code)' }}>
-                  {applyVizablyRepoPrefix(newRepoName) || `${VIZABLY_REPO_PREFIX}…`}
-                </code>{' '}
-                so storage repos are easy to recognize.
-              </p>
-              <p
-                style={{
-                  fontSize: 'var(--text-xs)',
-                  color: 'var(--text-muted)',
-                  margin: '8px 0 0',
-                  lineHeight: 1.45,
-                }}
-              >
-                Creating a repository requires Vizably&apos;s GitHub App{' '}
-                <strong style={{ fontWeight: 600, color: 'var(--text-body)' }}>
-                  Administration
-                </strong>{' '}
-                permission (create empty private repos). Contents stay limited to repos you
-                install Vizably on.
-              </p>
-              {needsInstall && (
-                <div
-                  style={{
-                    marginTop: 10,
-                    padding: '10px 12px',
-                    borderRadius: 'var(--radius-md)',
-                    background: 'var(--sev-moderate-bg)',
-                    border: '1px solid var(--sev-moderate)',
-                    fontSize: 'var(--text-sm)',
-                    color: 'var(--text-body)',
-                    lineHeight: 1.45,
-                  }}
-                  onClick={(e) => e.stopPropagation()}
-                >
-                  <p style={{ margin: 0 }}>
-                    Repository created
-                    {createdStorageRef?.full_name ? (
-                      <>
-                        {' '}
-                        (<code style={{ font: 'var(--font-code)' }}>{createdStorageRef.full_name}</code>)
-                      </>
-                    ) : null}
-                    . Add it to your Vizably GitHub App installation, then continue.
-                  </p>
-                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10, marginTop: 10 }}>
-                    {installUrl && (
-                      <a
-                        href={installUrl}
-                        target="_blank"
-                        rel="noreferrer"
-                        style={{ color: 'var(--text-link)' }}
-                      >
-                        Open GitHub App install
-                      </a>
-                    )}
-                    <button
-                      type="button"
-                      onClick={handleRefreshAfterInstall}
-                      style={{
-                        background: 'none',
-                        border: 'none',
-                        padding: 0,
-                        color: 'var(--text-link)',
-                        cursor: 'pointer',
-                        font: 'inherit',
-                        textDecoration: 'underline',
-                      }}
-                    >
-                      I&apos;ve added it — refresh
-                    </button>
-                  </div>
-                </div>
-              )}
-            </ConnectOption>
+            </div>
+          ) : (
+            <p style={{ fontSize: 'var(--text-sm)', color: 'var(--text-body)', margin: 0, lineHeight: 1.5 }}>
+              Using{' '}
+              <code style={{ font: 'var(--font-code)' }}>
+                {activeStorageRef?.full_name || VIZABLY_DEFAULT_STORE_NAME}
+              </code>
+              .
+            </p>
+          )}
 
-            <ConnectOption
-              active={mode === 'existing'}
-              onSelect={() => setMode('existing')}
-              icon="FolderOpen"
-              title={`Use an existing ${pv.unit}`}
-              desc={`Pick ${pv.article} ${pv.unit} from your GitHub account.`}
+          {needsInstall && (
+            <div
+              style={{
+                marginTop: 12,
+                padding: '10px 12px',
+                borderRadius: 'var(--radius-md)',
+                background: 'var(--sev-moderate-bg)',
+                border: '1px solid var(--sev-moderate)',
+                fontSize: 'var(--text-sm)',
+                color: 'var(--text-body)',
+                lineHeight: 1.45,
+              }}
             >
-              {loadingRepos ? (
-                <p style={{ fontSize: 'var(--text-sm)', color: 'var(--text-muted)', margin: 0 }}>
-                  Loading repositories…
-                </p>
-              ) : storages.length === 0 ? (
-                <p style={{ fontSize: 'var(--text-sm)', color: 'var(--text-muted)', margin: 0 }}>
-                  No repositories found. Create one on GitHub or check app installation.
-                </p>
-              ) : (
-                <div style={{ position: 'relative' }}>
-                  <select
-                    value={selectedId}
-                    onClick={(e) => e.stopPropagation()}
-                    onChange={(e) => setSelectedId(e.target.value)}
-                    style={{
-                      width: '100%',
-                      height: 42,
-                      padding: '0 12px',
-                      borderRadius: 'var(--radius-md)',
-                      border: '1px solid var(--border-strong)',
-                      font: 'var(--font-sans)',
-                      fontSize: 'var(--text-sm)',
-                      color: 'var(--text-strong)',
-                      background: 'var(--surface-card)',
-                      appearance: 'none',
-                      cursor: 'pointer',
-                    }}
+              <p style={{ margin: 0 }}>
+                Repository created
+                {createdRef?.full_name ? (
+                  <>
+                    {' '}
+                    (<code style={{ font: 'var(--font-code)' }}>{createdRef.full_name}</code>)
+                  </>
+                ) : null}
+                . Add it to your Vizably GitHub App installation, then continue.
+              </p>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10, marginTop: 10 }}>
+                {installUrl && (
+                  <a
+                    href={installUrl}
+                    target="_blank"
+                    rel="noreferrer"
+                    style={{ color: 'var(--text-link)' }}
                   >
-                    {storages.map((repo) => (
-                      <option key={repo.id} value={repo.id}>
-                        {repo.full_name}
-                        {repo.private ? ' (private)' : ''}
-                      </option>
-                    ))}
-                  </select>
-                  <span
-                    style={{
-                      position: 'absolute',
-                      right: 12,
-                      top: '50%',
-                      transform: 'translateY(-50%)',
-                      pointerEvents: 'none',
-                      color: 'var(--text-muted)',
-                    }}
-                  >
-                    {Ico('ChevronDown', 16)}
-                  </span>
-                </div>
-              )}
-              <button
-                type="button"
-                onClick={(e) => {
-                  e.stopPropagation()
-                  loadStorages()
-                }}
-                style={{
-                  marginTop: 8,
-                  background: 'none',
-                  border: 'none',
-                  padding: 0,
-                  color: 'var(--text-link)',
-                  cursor: 'pointer',
-                  fontSize: 'var(--text-xs)',
-                  textDecoration: 'underline',
-                }}
-              >
-                Refresh repository list
-              </button>
-            </ConnectOption>
-          </div>
+                    Open GitHub App install
+                  </a>
+                )}
+                <button
+                  type="button"
+                  onClick={handleRefreshAfterInstall}
+                  style={{
+                    background: 'none',
+                    border: 'none',
+                    padding: 0,
+                    color: 'var(--text-link)',
+                    cursor: 'pointer',
+                    font: 'inherit',
+                    textDecoration: 'underline',
+                  }}
+                >
+                  I&apos;ve added it — refresh
+                </button>
+              </div>
+            </div>
+          )}
         </Card>
 
         {validating && (
@@ -965,7 +501,7 @@ export default function ConnectView({
           </p>
         )}
 
-        {validation && statusUi && !validating && (
+        {validation && statusUi && !validating && !needsInstall && (
           <div
             style={{
               marginTop: 14,
@@ -996,11 +532,6 @@ export default function ConnectView({
             <p style={{ fontSize: 'var(--text-sm)', color: 'var(--text-body)', margin: '6px 0 0', lineHeight: 1.45 }}>
               {statusUi.detail(validation)}
             </p>
-            {validation.reason === 'repairable' && (
-              <p style={{ fontSize: 'var(--text-xs)', color: 'var(--text-muted)', margin: '6px 0 0' }}>
-                The scan index will be rebuilt when you load this account.
-              </p>
-            )}
             {initBlocked && (
               <p style={{ fontSize: 'var(--text-xs)', color: 'var(--sev-serious-fg)', margin: '8px 0 0' }}>
                 This storage is read-only — you can load saved scans but cannot set up or save new ones.
@@ -1037,7 +568,13 @@ export default function ConnectView({
             variant="primary"
             size="lg"
             style={{ flex: 1 }}
-            disabled={primaryDisabled}
+            disabled={
+              discovering ||
+              creating ||
+              confirming ||
+              validating ||
+              (emptyAccount ? false : confirmBlocked)
+            }
             onClick={handleConfirm}
             iconRight={Ico('ArrowRight', 17, '#fff')}
           >

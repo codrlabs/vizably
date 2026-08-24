@@ -2,6 +2,8 @@ import { describe, expect, it } from 'vitest'
 import {
   applyVizablyRepoPrefix,
   normalizeGitHubRepoName,
+  nextVizablyStoreName,
+  VIZABLY_DEFAULT_STORE_NAME,
   VIZABLY_REPO_PREFIX,
 } from '../utils/githubRepoName'
 
@@ -36,5 +38,13 @@ describe('applyVizablyRepoPrefix', () => {
   it('does not double-prefix when viz_ is already present', () => {
     expect(applyVizablyRepoPrefix('viz_scans')).toBe('viz_scans')
     expect(applyVizablyRepoPrefix('VIZ_reports')).toBe('viz_reports')
+  })
+})
+
+describe('nextVizablyStoreName', () => {
+  it('uses viz_scans then numbered fallbacks', () => {
+    expect(nextVizablyStoreName([])).toBe(VIZABLY_DEFAULT_STORE_NAME)
+    expect(nextVizablyStoreName(['viz_scans'])).toBe('viz_scans-2')
+    expect(nextVizablyStoreName(['viz_scans', 'viz_scans-2'])).toBe('viz_scans-3')
   })
 })
