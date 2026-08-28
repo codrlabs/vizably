@@ -74,11 +74,12 @@ function makeAuthRouter({ authService, storageService }) {
       }
 
       const clients = await authService.clientsFor(req.user);
-      if (!clients.githubClient) {
-        return res.status(400).json({ error: 'GitHub client is not available' });
+      const octokit = clients.githubUserClient || clients.githubClient;
+      if (!octokit) {
+        return githubAccessRevoked(res);
       }
 
-      const repos = await storageService.listGitHubRepos(clients.githubClient);
+      const repos = await storageService.listGitHubRepos(octokit);
       return res.json({
         provider: 'github',
         storages: repos.map((repo) => ({
@@ -90,6 +91,9 @@ function makeAuthRouter({ authService, storageService }) {
         })),
       });
     } catch (err) {
+      if (err.status === 401) {
+        return githubAccessRevoked(res);
+      }
       console.error(err);
       return res.status(500).json({ error: 'Failed to list storages' });
     }
@@ -265,6 +269,13 @@ function makeAuthRouter({ authService, storageService }) {
   });
 
   return router;
+}
+
+function githubAccessRevoked(res) {
+  return res.status(401).json({
+    error: 'GitHub access was revoked. Sign in with GitHub again.',
+    code: 'GITHUB_AUTH_REVOKED',
+  });
 }
 
 /** @param {import('express').Request} req */

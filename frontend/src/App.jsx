@@ -332,6 +332,16 @@ function AppRoutes() {
     navigate(PATHS.dashboard)
   }
 
+  const reconnectGitHub = async () => {
+    try {
+      await apiClient.logout()
+    } catch {
+      // Clear local state even if the network call fails.
+    }
+    setUser(null)
+    apiClient.githubLogin()
+  }
+
   const signOut = async () => {
     try {
       await apiClient.logout()
@@ -363,7 +373,8 @@ function AppRoutes() {
       <ConnectView
         provider={connectProvider}
         onDone={connectDone}
-        onCancel={() => navigate(PATHS.signin)}
+        onCancel={signOut}
+        onReconnect={reconnectGitHub}
         storageError={storageError}
       />
     )
@@ -397,9 +408,7 @@ function AppRoutes() {
           element={
             authed && storageReady
               ? <Navigate to={PATHS.dashboard} replace />
-              : authed
-                ? <Navigate to={PATHS.connect} replace />
-                : <SignInView onNav={nav} onAuth={auth} />
+              : <SignInView onNav={nav} onAuth={auth} />
           }
         />
         <Route path={PATHS.connect} element={<ConnectRoute />} />
