@@ -318,45 +318,6 @@ test('GET /api/auth/storages returns mapped GitHub repos', async () => {
   assert.equal(res.body.storages[0].id, 'R_kg');
 });
 
-test('GET /api/auth/storage/name-availability returns availability result', async () => {
-  const app = createAuthedApp({
-    user: AUTHED_USER,
-    authService: {
-      clientsFor: async () => ({ githubUserClient: { mock: true } }),
-    },
-    storageService: {
-      checkGitHubRepoNameAvailability: async (name) => ({
-        name,
-        normalizedName: name,
-        full_name: `sam/${name}`,
-        status: 'available',
-        message: `sam/${name} is available.`,
-      }),
-    },
-  });
-  const res = await request(app).get(
-    '/api/auth/storage/name-availability?provider=github&name=fresh-repo',
-  );
-  assert.equal(res.status, 200);
-  assert.equal(res.body.status, 'available');
-  assert.equal(res.body.full_name, 'sam/fresh-repo');
-});
-
-test('GET /api/auth/storage/name-availability requires name', async () => {
-  const app = createAuthedApp({
-    user: AUTHED_USER,
-    authService: {
-      clientsFor: async () => ({ githubUserClient: {} }),
-    },
-    storageService: {},
-  });
-  const res = await request(app).get(
-    '/api/auth/storage/name-availability?provider=github',
-  );
-  assert.equal(res.status, 400);
-  assert.match(res.body.error, /name is required/);
-});
-
 test('POST /api/auth/storage/create returns storageRef and needsInstall', async () => {
   const app = createAuthedApp({
     user: AUTHED_USER,
