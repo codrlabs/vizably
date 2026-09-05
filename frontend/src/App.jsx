@@ -352,6 +352,18 @@ function AppRoutes() {
     navigate(PATHS.landing)
   }
 
+  const redirectToSignIn = () => {
+    navigate(PATHS.signin)
+    setUser(null)
+    setAuthLoading(false)
+    setScan(null)
+    setProblem(null)
+    setSavedScans(null)
+    setProvider(null)
+    setAuthed(false)
+    setStorageReady(false)
+  }
+
   const route = routeKeyFor(location.pathname)
 
   useEffect(() => {
@@ -373,7 +385,7 @@ function AppRoutes() {
       <ConnectView
         provider={connectProvider}
         onDone={connectDone}
-        onCancel={signOut}
+        onCancel={redirectToSignIn}
         onReconnect={reconnectGitHub}
         storageError={storageError}
       />
