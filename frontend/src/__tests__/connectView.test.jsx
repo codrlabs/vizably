@@ -193,6 +193,30 @@ describe('ConnectView', () => {
     expect(screen.getByRole('alert')).toHaveTextContent('GitHub sign-in failed')
   })
 
+  it('offers reconnect when GitHub access was revoked', async () => {
+    const onReconnect = vi.fn()
+    const err = new Error('GitHub client is not available')
+    err.status = 400
+    const client = mockClient({
+      listStorages: vi.fn().mockRejectedValue(err),
+    })
+
+    render(
+      <ConnectView
+        provider="github"
+        onDone={vi.fn()}
+        onCancel={vi.fn()}
+        onReconnect={onReconnect}
+        client={client}
+      />,
+    )
+
+    expect(await screen.findByText(/GitHub access was revoked/i)).toBeInTheDocument()
+    expect(screen.getByText(/GitHub access revoked/i)).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: /reconnect github/i }))
+    await waitFor(() => expect(onReconnect).toHaveBeenCalled())
+  })
+
   it('creates a new repository then validates for init', async () => {
     const created = {
       id: 'R_kgNew',

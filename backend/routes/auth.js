@@ -64,6 +64,15 @@ function makeAuthRouter({ authService, storageService }) {
     });
   });
 
+
+  function getOctokit (clients){
+      const octokit = clients.githubUserClient || clients.githubClient;
+      if (!octokit) {
+        return githubAccessRevoked(res);
+      }
+      return octokit;
+  }
+
   router.get('/storages', requireAuth, async (req, res) => {
     try {
       const provider = req.query.provider;
@@ -74,11 +83,10 @@ function makeAuthRouter({ authService, storageService }) {
       }
 
       const clients = await authService.clientsFor(req.user);
-      if (!clients.githubClient) {
-        return res.status(400).json({ error: 'GitHub client is not available' });
-      }
 
-      const repos = await storageService.listGitHubRepos(clients.githubClient);
+      const octokit = getOctokit(clients);
+
+      const repos = await storageService.listGitHubRepos(octokit);
       return res.json({
         provider: 'github',
         storages: repos.map((repo) => ({
@@ -90,6 +98,9 @@ function makeAuthRouter({ authService, storageService }) {
         })),
       });
     } catch (err) {
+      if (err.status === 401) {
+        return githubAccessRevoked(res);
+      }
       console.error(err);
       return res.status(500).json({ error: 'Failed to list storages' });
     }
@@ -109,9 +120,8 @@ function makeAuthRouter({ authService, storageService }) {
       }
 
       const clients = await authService.clientsFor(req.user);
-      if (!clients.githubUserClient && !clients.githubClient) {
-        return res.status(400).json({ error: 'GitHub client is not available' });
-      }
+
+      const octokit = getOctokit(clients);
 
       const result = await storageService.checkGitHubRepoNameAvailability(
         name,
@@ -265,6 +275,13 @@ function makeAuthRouter({ authService, storageService }) {
   });
 
   return router;
+}
+
+function githubAccessRevoked(res) {
+  return res.status(401).json({
+    error: 'GitHub access was revoked. Sign in with GitHub again.',
+    code: 'GITHUB_AUTH_REVOKED',
+  });
 }
 
 /** @param {import('express').Request} req */

@@ -43,6 +43,14 @@ const STATUS_UI = {
   },
 }
 
+function isGitHubAccessLost(err) {
+  return (
+    err?.code === 'GITHUB_AUTH_REVOKED' ||
+    err?.status === 401 ||
+    /GitHub client is not available/i.test(err?.message || '')
+  )
+}
+
 function reasonMessage(reason) {
   switch (reason) {
     case 'malformed_manifest':
@@ -159,6 +167,7 @@ function ConnectOption({ active, onSelect, icon, title, desc, children }) {
  * @param {'github' | 'google'} props.provider
  * @param {() => void} props.onDone
  * @param {() => void} props.onCancel
+ * @param {() => void | Promise<void>} [props.onReconnect]
  * @param {string} [props.storageError]
  * @param {import('../lib/apiClient').ApiClient} [props.client]
  */
@@ -166,6 +175,7 @@ export default function ConnectView({
   provider,
   onDone,
   onCancel,
+  onReconnect,
   storageError = null,
   client = apiClient,
 }) {
@@ -186,6 +196,7 @@ export default function ConnectView({
   const [confirming, setConfirming] = useState(false)
   const [error, setError] = useState(storageError)
   const [listError, setListError] = useState(null)
+  const [needsReconnect, setNeedsReconnect] = useState(false)
   const [nameAvailability, setNameAvailability] = useState(null)
   const [checkingName, setCheckingName] = useState(false)
 
@@ -214,6 +225,7 @@ export default function ConnectView({
     if (!isGitHub) return
     setLoadingRepos(true)
     setListError(null)
+    setNeedsReconnect(false)
     try {
       const result = await client.listStorages('github')
       const list = result.storages ?? []
@@ -221,7 +233,13 @@ export default function ConnectView({
       setSelectedId((prev) => prev || list[0]?.id || '')
       return list
     } catch (err) {
-      setListError(err.message || 'Failed to load repositories')
+      const lost = isGitHubAccessLost(err)
+      setNeedsReconnect(lost)
+      setListError(
+        lost
+          ? 'GitHub access was revoked. Reconnect to authorize Vizably again.'
+          : err.message || 'Failed to load repositories',
+      )
       setStorages([])
       setSelectedId('')
       return []
@@ -352,17 +370,18 @@ export default function ConnectView({
     (mode === 'new' && !activeStorageRef)
 
   const confirmLabel = useMemo(() => {
+    if (needsReconnect) return 'Reconnect GitHub'
     if (awaitingCreate) return 'Create repository'
     if (statusUi?.button) return statusUi.button
     return 'Continue'
-  }, [awaitingCreate, statusUi])
+  }, [needsReconnect, awaitingCreate, statusUi])
 
   const primaryDisabled =
     creating ||
     confirming ||
     validating ||
-    (mode === 'new' && needsInstall) ||
-    (awaitingCreate ? nameUnavailable : confirmBlocked)
+    (needsReconnect ? false : (mode === 'new' && needsInstall) ||
+      (awaitingCreate ? nameUnavailable : confirmBlocked))
 
   const handleCreateRepo = async () => {
     const name = normalizeGitHubRepoName(newRepoName)
@@ -459,7 +478,24 @@ export default function ConnectView({
     await runValidation(ref)
   }
 
+  const handleReconnect = async () => {
+    if (onReconnect) {
+      await onReconnect()
+      return
+    }
+    try {
+      await client.logout()
+    } catch {
+      // Continue to GitHub even if logout fails (stale cookie).
+    }
+    client.githubLogin()
+  }
+
   const handleConfirm = async () => {
+    if (needsReconnect) {
+      await handleReconnect()
+      return
+    }
     if (mode === 'new' && !activeStorageRef && newRepoName.trim()) {
       await handleCreateRepo()
       return
@@ -596,9 +632,11 @@ export default function ConnectView({
           >
             {providerIcon}
             <span style={{ font: 'var(--font-label)', color: 'var(--text-strong)' }}>
-              {pv.name} connected
+              {needsReconnect ? `${pv.name} access revoked` : `${pv.name} connected`}
             </span>
-            <span style={{ color: 'var(--green-600)' }}>{Ico('Check', 15, 'currentColor')}</span>
+            <span style={{ color: needsReconnect ? 'var(--sev-serious-fg)' : 'var(--green-600)' }}>
+              {Ico(needsReconnect ? 'TriangleAlert' : 'Check', 15, 'currentColor')}
+            </span>
           </div>
           <h1 style={{ fontSize: 'var(--text-xl)', margin: '0 0 6px' }}>
             Where should we save your scans?
@@ -1004,7 +1042,7 @@ export default function ConnectView({
             style={{ flex: 1 }}
             disabled={primaryDisabled}
             onClick={handleConfirm}
-            iconRight={Ico('ArrowRight', 17, '#fff')}
+            iconRight={Ico(needsReconnect ? 'Github' : 'ArrowRight', 17, '#fff')}
           >
             {creating ? 'Creating…' : confirming ? 'Connecting…' : confirmLabel}
           </Button>

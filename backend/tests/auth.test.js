@@ -318,6 +318,25 @@ test('GET /api/auth/storages returns mapped GitHub repos', async () => {
   assert.equal(res.body.storages[0].id, 'R_kg');
 });
 
+test('GET /api/auth/storages returns GITHUB_AUTH_REVOKED when GitHub rejects the token', async () => {
+  const app = createAuthedApp({
+    user: AUTHED_USER,
+    authService: {
+      clientsFor: async () => ({ githubClient: { mock: true } }),
+    },
+    storageService: {
+      listGitHubRepos: async () => {
+        const err = new Error('Bad credentials');
+        err.status = 401;
+        throw err;
+      },
+    },
+  });
+  const res = await request(app).get('/api/auth/storages?provider=github');
+  assert.equal(res.status, 401);
+  assert.equal(res.body.code, 'GITHUB_AUTH_REVOKED');
+});
+
 test('GET /api/auth/storage/name-availability returns availability result', async () => {
   const app = createAuthedApp({
     user: AUTHED_USER,
