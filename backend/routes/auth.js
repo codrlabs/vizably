@@ -65,12 +65,8 @@ function makeAuthRouter({ authService, storageService }) {
   });
 
 
-  function getOctokit (clients){
-      const octokit = clients.githubUserClient || clients.githubClient;
-      if (!octokit) {
-        return githubAccessRevoked(res);
-      }
-      return octokit;
+  function getOctokit(clients) {
+    return clients.githubUserClient || clients.githubClient;
   }
 
   router.get('/storages', requireAuth, async (req, res) => {
@@ -85,6 +81,9 @@ function makeAuthRouter({ authService, storageService }) {
       const clients = await authService.clientsFor(req.user);
 
       const octokit = getOctokit(clients);
+      if (!octokit) {
+        return githubAccessRevoked(res);
+      }
 
       const repos = await storageService.listGitHubRepos(octokit);
       return res.json({
@@ -122,6 +121,9 @@ function makeAuthRouter({ authService, storageService }) {
       const clients = await authService.clientsFor(req.user);
 
       const octokit = getOctokit(clients);
+      if (!octokit) {
+        return githubAccessRevoked(res);
+      }
 
       const result = await storageService.checkGitHubRepoNameAvailability(
         name,
