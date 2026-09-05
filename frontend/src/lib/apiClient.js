@@ -106,6 +106,21 @@ export class ApiClient {
   }
 
   /**
+   * Discover existing Vizably account stores (manifest-based).
+   * @param {'github' | 'google'} provider
+   * @returns {Promise<{
+   *   provider: string,
+   *   stores: Array<{ storageRef: object, validation: object }>,
+   *   source: string | null,
+   * }>}
+   */
+  discoverStorages(provider) {
+    return this._request(
+      `/api/auth/storage/discover?provider=${encodeURIComponent(provider)}`,
+    )
+  }
+
+  /**
    * Check whether a GitHub repository name is available for the signed-in user.
    * @param {string} name
    * @returns {Promise<{
@@ -125,7 +140,8 @@ export class ApiClient {
 
   /**
    * Create a private empty GitHub repository for storage onboarding.
-   * @param {string} name repository name (not owner/name)
+   * Omit `name` to use the next default (`viz_scans`, then `viz_scans-2`, …).
+   * @param {string} [name] repository name (not owner/name)
    * @returns {Promise<{
    *   provider: string,
    *   storageRef: object,
@@ -137,7 +153,9 @@ export class ApiClient {
     return this._request('/api/auth/storage/create', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ provider: 'github', name }),
+      body: JSON.stringify(
+        name ? { provider: 'github', name } : { provider: 'github' },
+      ),
     })
   }
 

@@ -9,7 +9,7 @@ export const PROVIDERS = {
     name: 'GitHub',
     store: 'a private GitHub repo',
     storeShort: 'GitHub repo',
-    dest: 'vizably-scans',
+    dest: 'scans',
     destIcon: 'GitBranch',
     unit: 'repository',
     unitShort: 'repo',
