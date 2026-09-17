@@ -94,10 +94,10 @@ On-disk contract (the "data needed to load back the account"): a root
 When working on auth/storage, treat these as the source of truth and keep them in
 sync with the code:
 
-- [`docs/guides/auth_storage_guide/githubGoogleAuthStorageImplementation.md`](docs/guides/auth_storage_guide/githubGoogleAuthStorageImplementation.md)
-  — auth flow, endpoints, scopes, frontend design.
-- [`docs/guides/auth_storage_guide/accountStorageContract.md`](docs/guides/auth_storage_guide/accountStorageContract.md)
-  — manifest + scans layout + fit-check + concurrency rules.
+- [Account storage](https://open.codrlabs.com/vizably/account-storage/) on
+  Codrlabs Open — the conceptual guide: flow, manifest, fit-check, concurrency.
+- `backend/README.md` § Endpoints and § GitHub App setup — the current routes
+  and local/production GitHub App configuration.
 - [`docs/guides/auth_storage_guide/TODO.md`](docs/guides/auth_storage_guide/TODO.md)
   — implementation checklist.
 
