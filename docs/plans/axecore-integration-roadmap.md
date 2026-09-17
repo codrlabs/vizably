@@ -5,7 +5,7 @@ shipped in PR #50 (`services/scanRunner.js`, transformer implemented,
 Alpine Chromium in the Dockerfile). Phase 2 (reliability) is next; the
 Phase 3 UX items landed with the design-system frontend.
 **Owner:** Eli Iguer
-**Reference guide:** [`../guides/axecore-integration.md`](../guides/axecore-integration.md)
+**Reference guide:** [Scanning](https://open.codrlabs.com/vizably/scanning/) on Codrlabs Open
 
 ## Goal
 

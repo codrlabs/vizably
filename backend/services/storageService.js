@@ -1,7 +1,8 @@
 /**
  * StorageService — provider-neutral portable-account storage.
  *
- * Speaks the on-disk contract in docs/guides/auth_storage_guide/accountStorageContract.md.
+ * Speaks the on-disk contract documented at
+ * https://open.codrlabs.com/vizably/account-storage/.
  * Accepts pre-built authenticated clients (no AuthService dependency).
  * GitHub adapter implemented; Google/Drive stubbed until Phase 3.
  */

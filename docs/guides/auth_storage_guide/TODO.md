@@ -1,9 +1,9 @@
 # Implementation TODO — GitHub/Google Auth & Portable Storage
 
 > Checklist for the design in
-> [`githubGoogleAuthStorageImplementation.md`](githubGoogleAuthStorageImplementation.md)
-> and the on-disk contract in
-> [`accountStorageContract.md`](accountStorageContract.md).
+> [Account storage](https://open.codrlabs.com/vizably/account-storage/) on
+> Codrlabs Open (flow + on-disk contract) and the current routes in
+> `backend/README.md`.
 > Verify each item against the actual code before ticking it.
 >
 > **Model in one line:** the user's GitHub repo / Drive folder *is* the account.
@@ -79,7 +79,7 @@ Provider-neutral interface; **GitHub adapter implemented**, Google adapter stubb
       (Google folders come from the client-side Picker in Phase 3, not the backend)
 - [x] **Fit-check**: `validateStorage(provider, storageRef, clients)` →
       `{ status, reason?, capabilities, manifestSummary? }` per
-      [accountStorageContract.md → Validation rules](accountStorageContract.md#validation-rules-the-fit-check)
+      [Account storage → The fit-check](https://open.codrlabs.com/vizably/account-storage/#the-fit-check)
 - [x] **Load**: `loadAccount(provider, storageRef, clients)` — read manifest +
       `scans/index.json`, **reconcile drift** by rebuilding from `scans/*.json`
 - [x] **Init**: `initStorage(provider, storageRef, owner, clients)` — **revalidate**,
@@ -244,6 +244,6 @@ One adapter behind the existing provider-neutral interface; no rewrite of Phases
 
 - Each checkbox is a verifiable claim. If you can't verify it in real code, it's not done.
 - Prefer small, testable PRs.
-- [`githubGoogleAuthStorageImplementation.md`](githubGoogleAuthStorageImplementation.md)
-  (flow/API) and [`accountStorageContract.md`](accountStorageContract.md) (bytes)
-  are the source of truth — update them if the implementation diverges.
+- [Account storage](https://open.codrlabs.com/vizably/account-storage/) on
+  Codrlabs Open (flow/bytes) and `backend/README.md` (current routes) are the
+  source of truth — flag a PR against Open if the implementation diverges.
