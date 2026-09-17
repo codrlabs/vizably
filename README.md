@@ -96,13 +96,12 @@ vizably/
 │   └── types.js                      # JSDoc Problem / ScanResult / Impact
 ├── docs/
 │   ├── README.md                     # Documentation index
-│   ├── guides/                       # How-to guides
-│   ├── plans/                        # Tracked implementation roadmaps
-│   │   ├── project-roadmap.md
-│   │   ├── architecture-map.md
-│   │   ├── axecore-integration-roadmap.md
-│   │   └── codebase-reorganization.md
-│   └── obsidian/                     # Obsidian vault (canvas + scratch notes)
+│   ├── guides/                       # Repo-local guides (workflow, auth_storage_guide/)
+│   └── plans/                        # Tracked implementation roadmaps
+│       ├── project-roadmap.md
+│       ├── architecture-map.md
+│       ├── axecore-integration-roadmap.md
+│       └── codebase-reorganization.md
 └── docker-compose.yml                # Frontend + backend
 ```
 
@@ -198,13 +197,14 @@ npm test          # node --test (node:test + supertest)
 
 See [`docs/README.md`](docs/README.md) for an index. Highlights:
 
+- [Codrlabs Open — Vizably docs](https://open.codrlabs.com/vizably/overview/)
+  — getting started, architecture, URL normalization, scanning, and account
+  storage. The maintained guides live here now, not in this repository.
 - [`docs/guides/workflow.md`](docs/guides/workflow.md) — Git/GitHub workflow
-- [`docs/guides/axecore-integration.md`](docs/guides/axecore-integration.md) — How-to for the real scanner
 - [`docs/plans/project-roadmap.md`](docs/plans/project-roadmap.md) — Phased roadmap (housekeeping → real scanner → UX → reliability → accounts)
 - [`docs/plans/architecture-map.md`](docs/plans/architecture-map.md) — Per-screen architecture map and code organization
 - [`docs/plans/axecore-integration-roadmap.md`](docs/plans/axecore-integration-roadmap.md) — Sub-roadmap for replacing the mock scanner
 - [`docs/plans/codebase-reorganization.md`](docs/plans/codebase-reorganization.md) — Final repo layout after the Phase 1 / Phase 3 reorg
-- [`docs/obsidian/`](docs/obsidian/) — Obsidian vault (canvas + supporting notes)
 - [deepwiki.com/codrlabs/vizably/](https://deepwiki.com/codrlabs/vizably/) — Interactive knowledge platform that helps navigate the codebase and makes it accessble for others to contribute.
 
 ## 🤝 Contributing

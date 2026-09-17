@@ -167,9 +167,10 @@ PR.
       newline).
 - [ ] Add issue + PR templates under `.github/` (just markdown, no
       automation).
-- [ ] Audit `docs/guides/axecore-integration.md` and open issues for
-      any file path it references that doesn't exist yet (these are
-      Phase 1 deliverables — the intern just files the issues).
+- [x] ~~Audit `docs/guides/axecore-integration.md` and open issues for
+      any file path it references that doesn't exist yet~~ — moot: the
+      guide moved to [Scanning](https://open.codrlabs.com/vizably/scanning/)
+      on Codrlabs Open once Phase 2 shipped for real.
 - [ ] Proofread all of `docs/` and submit a single docs-polish PR
       (typos, broken links, dead anchors). Run links manually; do not
       add tooling.
@@ -191,7 +192,7 @@ before/after detail.
       returns `mockScanResults` — same response, just relocated. Bind
       handlers correctly (avoid the known `this`-binding bug
       documented in
-      [`axecore-integration.md`](../guides/axecore-integration.md)).
+      [Scanning](https://open.codrlabs.com/vizably/scanning/) on Codrlabs Open).
 - [x] Add `backend/services/axeTransformer.js` as a stub with a typed
       input → output contract derived from the axe shape above. Cover
       it with a unit test using a captured axe payload as a fixture.
