@@ -322,18 +322,21 @@ function AppRoutes() {
     }
   }
 
-  /** Remove every saved scan from attached storage; keep the account connected. */
-  const deleteAllSaved = async () => {
-    const result = await apiClient.deleteAllScans()
+  /** Remove several saved scans; uses the bulk-delete-all endpoint when every scan is selected. */
+  const deleteManySaved = async (ids) => {
+    if (!ids?.length) return
+    let result
+    if (savedScans.length > 0 && ids.length === savedScans.length) {
+      result = await apiClient.deleteAllScans()
+    } else {
+      for (const id of ids) {
+        result = await apiClient.deleteScan(id)
+      }
+    }
     setUser((prev) => mergeAccountUpdate(prev, {
       scanCount: result.scanCount,
       scans: result.scans,
     }))
-    if (location.search.includes('scanId=')) {
-      setScan(null)
-      setProblem(null)
-    }
-    return result
   }
 
   const auth = (p) => {
@@ -460,6 +463,7 @@ function AppRoutes() {
                 onNav={nav}
                 onOpen={openSaved}
                 onDelete={deleteSaved}
+                onDeleteMany={deleteManySaved}
                 saved={savedScans}
                 provider={provider}
                 user={shellUser}
@@ -474,7 +478,6 @@ function AppRoutes() {
             <RequireStorage>
               <AccountView
                 onSignOut={signOut}
-                onDeleteAllScans={deleteAllSaved}
                 user={user}
                 shellUser={shellUser}
                 provider={provider}
