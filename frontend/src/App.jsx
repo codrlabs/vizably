@@ -322,18 +322,21 @@ function AppRoutes() {
     }
   }
 
-  /** Remove every saved scan from attached storage; keep the account connected. */
-  const deleteAllSaved = async () => {
-    const result = await apiClient.deleteAllScans()
+  /** Remove several saved scans; uses the bulk-delete-all endpoint when every scan is selected. */
+  const deleteManySaved = async (ids) => {
+    if (!ids?.length) return
+    let result
+    if (savedScans.length > 0 && ids.length === savedScans.length) {
+      result = await apiClient.deleteAllScans()
+    } else {
+      for (const id of ids) {
+        result = await apiClient.deleteScan(id)
+      }
+    }
     setUser((prev) => mergeAccountUpdate(prev, {
       scanCount: result.scanCount,
       scans: result.scans,
     }))
-    if (location.search.includes('scanId=')) {
-      setScan(null)
-      setProblem(null)
-    }
-    return result
   }
 
   const auth = (p) => {
@@ -346,6 +349,16 @@ function AppRoutes() {
     navigate(PATHS.dashboard)
   }
 
+  const reconnectGitHub = async () => {
+    try {
+      await apiClient.logout()
+    } catch {
+      // Clear local state even if the network call fails.
+    }
+    setUser(null)
+    apiClient.githubLogin()
+  }
+
   const signOut = async () => {
     try {
       await apiClient.logout()
@@ -354,6 +367,18 @@ function AppRoutes() {
     }
     setUser(null)
     navigate(PATHS.landing)
+  }
+
+  const redirectToSignIn = () => {
+    navigate(PATHS.signin)
+    setUser(null)
+    setAuthLoading(false)
+    setScan(null)
+    setProblem(null)
+    setSavedScans(null)
+    setProvider(null)
+    setAuthed(false)
+    setStorageReady(false)
   }
 
   const route = routeKeyFor(location.pathname)
@@ -377,7 +402,8 @@ function AppRoutes() {
       <ConnectView
         provider={connectProvider}
         onDone={connectDone}
-        onCancel={() => navigate(PATHS.signin)}
+        onCancel={redirectToSignIn}
+        onReconnect={reconnectGitHub}
         storageError={storageError}
       />
     )
@@ -411,9 +437,7 @@ function AppRoutes() {
           element={
             authed && storageReady
               ? <Navigate to={PATHS.dashboard} replace />
-              : authed
-                ? <Navigate to={PATHS.connect} replace />
-                : <SignInView onNav={nav} onAuth={auth} />
+              : <SignInView onNav={nav} onAuth={auth} />
           }
         />
         <Route path={PATHS.connect} element={<ConnectRoute />} />
@@ -425,6 +449,7 @@ function AppRoutes() {
                 onNav={nav}
                 onOpen={openSaved}
                 onDelete={deleteSaved}
+                onDeleteMany={deleteManySaved}
                 saved={savedScans}
                 provider={provider}
                 user={shellUser}
@@ -439,7 +464,6 @@ function AppRoutes() {
             <RequireStorage>
               <AccountView
                 onSignOut={signOut}
-                onDeleteAllScans={deleteAllSaved}
                 user={user}
                 shellUser={shellUser}
                 provider={provider}

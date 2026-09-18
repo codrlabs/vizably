@@ -4,12 +4,16 @@ import { Ico } from '../lib/icons'
 import { PROVIDERS } from '../data/placeholders'
 
 /** Dashboard — signed-in saved scans from the loaded account index. */
-export default function DashboardView({ onNav, onOpen, onDelete, saved, provider, user, storage }) {
+export default function DashboardView({ onNav, onOpen, onDelete, onDeleteMany, saved, provider, user, storage }) {
   const pv = PROVIDERS[provider] || PROVIDERS.github
   const storageLabel = storage?.full_name || pv.dest
   const [confirmId, setConfirmId] = useState(null)
   const [deletingId, setDeletingId] = useState(null)
   const [deleteError, setDeleteError] = useState(null)
+  const [selected, setSelected] = useState(() => new Set())
+  const [bulkConfirm, setBulkConfirm] = useState(false)
+  const [bulkBusy, setBulkBusy] = useState(false)
+  const [bulkError, setBulkError] = useState(null)
 
   const band = (v) => v >= 90 ? { c: 'var(--green-600)', g: 'Good' }
     : v >= 70 ? { c: 'var(--sev-moderate)', g: 'Fair' }
@@ -30,11 +34,40 @@ export default function DashboardView({ onNav, onOpen, onDelete, saved, provider
     }
   }
 
+  const toggleSelected = (id) => {
+    setSelected((prev) => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      return next
+    })
+  }
+
+  const toggleSelectAll = () => {
+    setSelected((prev) => (prev.size === saved.length ? new Set() : new Set(saved.map((s) => s.id))))
+  }
+
+  const handleBulkDelete = async () => {
+    if (!onDeleteMany || selected.size === 0) return
+    setBulkError(null)
+    setBulkBusy(true)
+    try {
+      await onDeleteMany(Array.from(selected))
+      setSelected(new Set())
+      setBulkConfirm(false)
+    } catch (err) {
+      setBulkError(err?.message || 'Failed to delete the selected scans')
+    } finally {
+      setBulkBusy(false)
+    }
+  }
+
   const Row = ({ s, last }) => {
     const [hover, setHover] = useState(false)
     const b = band(s.score)
     const confirming = confirmId === s.id
     const busy = deletingId === s.id
+    const checked = selected.has(s.id)
 
     return (
       <div
@@ -61,6 +94,17 @@ export default function DashboardView({ onNav, onOpen, onDelete, saved, provider
           transition: 'background var(--duration-fast) var(--ease-standard)',
         }}
       >
+        {onDeleteMany && !confirming && (
+          <input
+            type="checkbox"
+            aria-label={`Select scan ${s.url}`}
+            checked={checked}
+            disabled={busy || bulkBusy}
+            onClick={(e) => e.stopPropagation()}
+            onChange={() => toggleSelected(s.id)}
+            style={{ flexShrink: 0, width: 16, height: 16, cursor: 'pointer' }}
+          />
+        )}
         <span style={{
           flexShrink: 0, width: 38, height: 38, borderRadius: 'var(--radius-sm)',
           background: 'var(--bg-inset)', color: 'var(--text-muted)',
@@ -237,6 +281,68 @@ export default function DashboardView({ onNav, onOpen, onDelete, saved, provider
           }}
         >
           {deleteError}
+        </div>
+      )}
+
+      {onDeleteMany && (
+        <div style={{ display: 'flex', alignItems: 'center', gap: 14, marginBottom: 12, flexWrap: 'wrap' }}>
+          <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 'var(--text-sm)', color: 'var(--text-muted)', cursor: 'pointer' }}>
+            <input
+              type="checkbox"
+              aria-label="Select all scans"
+              checked={selected.size === saved.length}
+              onChange={toggleSelectAll}
+              disabled={bulkBusy}
+              style={{ width: 16, height: 16, cursor: 'pointer' }}
+            />
+            Select all
+          </label>
+          {selected.size > 0 && !bulkConfirm && (
+            <Button
+              variant="danger"
+              size="sm"
+              onClick={() => { setBulkError(null); setBulkConfirm(true) }}
+              iconLeft={Ico('Trash2', 14, '#fff')}
+            >
+              Delete {selected.size} selected
+            </Button>
+          )}
+        </div>
+      )}
+
+      {bulkConfirm && (
+        <div
+          role="region"
+          aria-label="Confirm delete selected scans"
+          style={{
+            marginBottom: 14, padding: 'var(--space-4)',
+            background: 'var(--sev-critical-bg)', border: '1px solid var(--sev-critical)',
+            borderRadius: 'var(--radius-md)',
+          }}
+        >
+          <p style={{ font: 'var(--font-label)', fontWeight: 'var(--weight-semibold)', color: 'var(--sev-critical-fg)', margin: '0 0 8px' }}>
+            Delete {selected.size} selected scan{selected.size === 1 ? '' : 's'}?
+          </p>
+          <p style={{ fontSize: 'var(--text-xs)', color: 'var(--text-muted)', margin: '0 0 12px', lineHeight: 1.45 }}>
+            They will be removed from your storage. GitHub history may still retain them.
+          </p>
+          {bulkError && (
+            <div role="alert" style={{
+              marginBottom: 12, padding: '10px 12px', borderRadius: 'var(--radius-md)',
+              background: 'var(--surface-card)', border: '1px solid var(--sev-critical)',
+              color: 'var(--sev-critical-fg)', fontSize: 'var(--text-sm)', lineHeight: 1.45,
+            }}>
+              {bulkError}
+            </div>
+          )}
+          <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+            <Button variant="danger" size="sm" disabled={bulkBusy} onClick={handleBulkDelete} iconLeft={Ico('Trash2', 16, '#fff')}>
+              {bulkBusy ? 'Deleting…' : 'Yes, delete'}
+            </Button>
+            <Button variant="secondary" size="sm" disabled={bulkBusy} onClick={() => { setBulkConfirm(false); setBulkError(null) }}>
+              Cancel
+            </Button>
+          </div>
         </div>
       )}
 
