@@ -462,7 +462,6 @@ function AppRoutes() {
               <DashboardView
                 onNav={nav}
                 onOpen={openSaved}
-                onDelete={deleteSaved}
                 onDeleteMany={deleteManySaved}
                 saved={savedScans}
                 provider={provider}
