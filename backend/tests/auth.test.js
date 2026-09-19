@@ -318,6 +318,26 @@ test('GET /api/auth/storages returns mapped GitHub repos', async () => {
   assert.equal(res.body.storages[0].id, 'R_kg');
 });
 
+test('GET /api/auth/storages returns GITHUB_AUTH_REVOKED when no client is available', async () => {
+  // Regression: getOctokit used to reference an out-of-scope `res` and throw
+  // a ReferenceError here, which the catch block's `err.status === 401` check
+  // does not match, so this came back as a 500 instead of a 401.
+  const app = createAuthedApp({
+    user: AUTHED_USER,
+    authService: {
+      clientsFor: async () => ({}),
+    },
+    storageService: {
+      listGitHubRepos: async () => {
+        throw new Error('should not be called without a client');
+      },
+    },
+  });
+  const res = await request(app).get('/api/auth/storages?provider=github');
+  assert.equal(res.status, 401);
+  assert.equal(res.body.code, 'GITHUB_AUTH_REVOKED');
+});
+
 test('GET /api/auth/storages returns GITHUB_AUTH_REVOKED when GitHub rejects the token', async () => {
   const app = createAuthedApp({
     user: AUTHED_USER,
@@ -359,6 +379,25 @@ test('GET /api/auth/storage/name-availability returns availability result', asyn
   assert.equal(res.status, 200);
   assert.equal(res.body.status, 'available');
   assert.equal(res.body.full_name, 'sam/fresh-repo');
+});
+
+test('GET /api/auth/storage/name-availability returns GITHUB_AUTH_REVOKED when no client is available', async () => {
+  const app = createAuthedApp({
+    user: AUTHED_USER,
+    authService: {
+      clientsFor: async () => ({}),
+    },
+    storageService: {
+      checkGitHubRepoNameAvailability: async () => {
+        throw new Error('should not be called without a client');
+      },
+    },
+  });
+  const res = await request(app).get(
+    '/api/auth/storage/name-availability?provider=github&name=fresh-repo',
+  );
+  assert.equal(res.status, 401);
+  assert.equal(res.body.code, 'GITHUB_AUTH_REVOKED');
 });
 
 test('GET /api/auth/storage/name-availability requires name', async () => {
@@ -405,6 +444,26 @@ test('POST /api/auth/storage/create returns storageRef and needsInstall', async 
   assert.equal(res.body.storageRef.full_name, 'sam/vizably-new');
   assert.equal(res.body.needsInstall, true);
   assert.match(res.body.installUrl, /installations\/new/);
+});
+
+test('POST /api/auth/storage/create returns GITHUB_AUTH_REVOKED when no client is available', async () => {
+  const app = createAuthedApp({
+    user: AUTHED_USER,
+    authService: {
+      clientsFor: async () => ({}),
+      getInstallationSetupUrl: async () => 'https://github.com/settings/installations',
+    },
+    storageService: {
+      createGitHubRepository: async () => {
+        throw new Error('should not be called without a client');
+      },
+    },
+  });
+  const res = await request(app)
+    .post('/api/auth/storage/create')
+    .send({ name: 'vizably-new' });
+  assert.equal(res.status, 401);
+  assert.equal(res.body.code, 'GITHUB_AUTH_REVOKED');
 });
 
 test('POST /api/auth/storage/create requires name', async () => {

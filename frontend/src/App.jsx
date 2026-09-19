@@ -358,10 +358,19 @@ function AppRoutes() {
     setAuthLoading(false)
     setScan(null)
     setProblem(null)
-    setSavedScans(null)
-    setProvider(null)
-    setAuthed(false)
-    setStorageReady(false)
+  }
+
+  /**
+   * Cancel out of storage setup. Only forces a fresh sign-in when GitHub
+   * access was actually revoked — someone who just clicked Connect by
+   * mistake keeps their session and can pick up onboarding again later.
+   */
+  const cancelConnect = (isRevoked) => {
+    if (isRevoked) {
+      redirectToSignIn()
+      return
+    }
+    navigate(PATHS.landing)
   }
 
   const route = routeKeyFor(location.pathname)
@@ -385,7 +394,7 @@ function AppRoutes() {
       <ConnectView
         provider={connectProvider}
         onDone={connectDone}
-        onCancel={redirectToSignIn}
+        onCancel={cancelConnect}
         onReconnect={reconnectGitHub}
         storageError={storageError}
       />

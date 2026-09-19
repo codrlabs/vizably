@@ -166,7 +166,7 @@ function ConnectOption({ active, onSelect, icon, title, desc, children }) {
  * @param {object} props
  * @param {'github' | 'google'} props.provider
  * @param {() => void} props.onDone
- * @param {() => void} props.onCancel
+ * @param {(isRevoked?: boolean) => void} props.onCancel
  * @param {() => void | Promise<void>} [props.onReconnect]
  * @param {string} [props.storageError]
  * @param {import('../lib/apiClient').ApiClient} [props.client]
@@ -598,7 +598,7 @@ export default function ConnectView({
           <p style={{ color: 'var(--text-muted)', fontSize: 'var(--text-sm)', lineHeight: 1.5 }}>
             Google Drive storage uses the Google Picker and is not wired yet. Use GitHub for now.
           </p>
-          <Button variant="secondary" size="lg" onClick={onCancel} style={{ marginTop: 20 }}>
+          <Button variant="secondary" size="lg" onClick={() => onCancel(needsReconnect)} style={{ marginTop: 20 }}>
             Back
           </Button>
         </div>
@@ -1033,7 +1033,7 @@ export default function ConnectView({
         </div>
 
         <div style={{ display: 'flex', gap: 10, marginTop: 18 }}>
-          <Button variant="secondary" size="lg" onClick={onCancel}>
+          <Button variant="secondary" size="lg" onClick={() => onCancel(needsReconnect)}>
             Back
           </Button>
           <Button

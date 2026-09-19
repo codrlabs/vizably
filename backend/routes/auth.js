@@ -65,12 +65,14 @@ function makeAuthRouter({ authService, storageService }) {
   });
 
 
-  function getOctokit (clients){
-      const octokit = clients.githubUserClient || clients.githubClient;
-      if (!octokit) {
-        return githubAccessRevoked(res);
-      }
-      return octokit;
+  /** Returns the usable client, or sends a 401 GITHUB_AUTH_REVOKED and returns null. */
+  function getOctokit(clients, res) {
+    const octokit = clients.githubUserClient || clients.githubClient;
+    if (!octokit) {
+      githubAccessRevoked(res);
+      return null;
+    }
+    return octokit;
   }
 
   router.get('/storages', requireAuth, async (req, res) => {
@@ -84,7 +86,8 @@ function makeAuthRouter({ authService, storageService }) {
 
       const clients = await authService.clientsFor(req.user);
 
-      const octokit = getOctokit(clients);
+      const octokit = getOctokit(clients, res);
+      if (!octokit) return;
 
       const repos = await storageService.listGitHubRepos(octokit);
       return res.json({
@@ -121,7 +124,7 @@ function makeAuthRouter({ authService, storageService }) {
 
       const clients = await authService.clientsFor(req.user);
 
-      const octokit = getOctokit(clients);
+      if (!getOctokit(clients, res)) return;
 
       const result = await storageService.checkGitHubRepoNameAvailability(
         name,
@@ -149,9 +152,7 @@ function makeAuthRouter({ authService, storageService }) {
       }
 
       const clients = await authService.clientsFor(req.user);
-      if (!clients.githubUserClient && !clients.githubClient) {
-        return res.status(400).json({ error: 'GitHub client is not available' });
-      }
+      if (!getOctokit(clients, res)) return;
 
       const installUrl = await authService.getInstallationSetupUrl();
       const result = await storageService.createGitHubRepository(name, clients, {
