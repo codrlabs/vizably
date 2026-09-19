@@ -353,7 +353,10 @@ class StorageService {
         if (hit) {
           stores.push(hit);
         }
-      } catch {
+      } catch (err) {
+        if (err?.status === 429 || (err?.status === 403 && /rate limit/i.test(String(err.message)))) {
+          throw err;
+        }
         // Skip repos we cannot inspect.
       }
     }

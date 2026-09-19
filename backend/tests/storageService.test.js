@@ -1538,6 +1538,52 @@ test('discoverAccountStores ignores listed repos that have no manifest', async (
   assert.equal(result.stores.length, 0);
 });
 
+test('discoverAccountStores rethrows a rate limit hit while validating a listed repo', async () => {
+  // Regression: the per-repo `consider()` inside the listing fallback used a
+  // bare catch, so a secondary rate limit mid-listing was swallowed as "no
+  // manifest here" instead of surfacing — silently returning an empty/partial
+  // `stores` list that would make the caller create a duplicate store.
+  const storageService = new StorageService();
+  const octokit = {
+    rest: {
+      users: {
+        getAuthenticated: async () => ({ data: { login: 'sam' } }),
+      },
+      repos: {
+        get: async ({ repo }) => {
+          if (repo === 'viz_scans') {
+            const err = new Error('Not Found');
+            err.status = 404;
+            throw err;
+          }
+          const err = new Error('API rate limit exceeded for user ID.');
+          err.status = 403;
+          throw err;
+        },
+        listForAuthenticatedUser: async () => ({
+          data: [
+            {
+              node_id: 'R_one',
+              full_name: 'sam/vizably-scans',
+              private: true,
+              html_url: 'https://github.com/sam/vizably-scans',
+            },
+          ],
+        }),
+      },
+    },
+  };
+
+  await assert.rejects(
+    () =>
+      storageService.discoverAccountStores('github', {
+        githubClient: octokit,
+        githubUserClient: octokit,
+      }),
+    /rate limit/i,
+  );
+});
+
 test('discoverAccountStores returns every listed store with a manifest', async () => {
   const storageService = new StorageService();
   const client = createMockGitHubClient({

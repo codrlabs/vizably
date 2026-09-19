@@ -121,24 +121,6 @@ export class ApiClient {
   }
 
   /**
-   * Check whether a GitHub repository name is available for the signed-in user.
-   * @param {string} name
-   * @returns {Promise<{
-   *   provider: string,
-   *   name: string,
-   *   normalizedName: string | null,
-   *   full_name: string | null,
-   *   status: 'available' | 'taken' | 'invalid' | 'error',
-   *   message: string,
-   * }>}
-   */
-  checkRepoNameAvailability(name) {
-    return this._request(
-      `/api/auth/storage/name-availability?provider=github&name=${encodeURIComponent(name)}`,
-    )
-  }
-
-  /**
    * Create a private empty GitHub repository for storage onboarding.
    * Omit `name` to use the next default (`viz_scans`, then `viz_scans-2`, …).
    * @param {string} [name] repository name (not owner/name)
