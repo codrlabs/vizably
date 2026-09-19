@@ -193,6 +193,59 @@ describe('ConnectView', () => {
     expect(screen.getByRole('alert')).toHaveTextContent('GitHub sign-in failed')
   })
 
+  it('Back does not signal a revoke when access is fine', async () => {
+    const onCancel = vi.fn()
+    const client = mockClient()
+    render(
+      <ConnectView provider="github" onDone={vi.fn()} onCancel={onCancel} client={client} />,
+    )
+
+    await waitForRepoPicker(client)
+    fireEvent.click(screen.getByRole('button', { name: /^back$/i }))
+    expect(onCancel).toHaveBeenCalledWith(false)
+  })
+
+  it('offers reconnect when GitHub access was revoked', async () => {
+    const onReconnect = vi.fn()
+    const err = new Error('GitHub client is not available')
+    err.status = 400
+    const client = mockClient({
+      listStorages: vi.fn().mockRejectedValue(err),
+    })
+
+    render(
+      <ConnectView
+        provider="github"
+        onDone={vi.fn()}
+        onCancel={vi.fn()}
+        onReconnect={onReconnect}
+        client={client}
+      />,
+    )
+
+    expect(await screen.findByText(/GitHub access was revoked/i)).toBeInTheDocument()
+    expect(screen.getByText(/GitHub access revoked/i)).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: /reconnect github/i }))
+    await waitFor(() => expect(onReconnect).toHaveBeenCalled())
+  })
+
+  it('Back signals a revoke so the caller can force a fresh sign-in', async () => {
+    const onCancel = vi.fn()
+    const err = new Error('GitHub client is not available')
+    err.status = 400
+    const client = mockClient({
+      listStorages: vi.fn().mockRejectedValue(err),
+    })
+
+    render(
+      <ConnectView provider="github" onDone={vi.fn()} onCancel={onCancel} client={client} />,
+    )
+
+    expect(await screen.findByText(/GitHub access was revoked/i)).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: /^back$/i }))
+    expect(onCancel).toHaveBeenCalledWith(true)
+  })
+
   it('creates a new repository then validates for init', async () => {
     const created = {
       id: 'R_kgNew',

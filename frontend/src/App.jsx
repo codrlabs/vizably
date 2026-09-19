@@ -332,6 +332,16 @@ function AppRoutes() {
     navigate(PATHS.dashboard)
   }
 
+  const reconnectGitHub = async () => {
+    try {
+      await apiClient.logout()
+    } catch {
+      // Clear local state even if the network call fails.
+    }
+    setUser(null)
+    apiClient.githubLogin()
+  }
+
   const signOut = async () => {
     try {
       await apiClient.logout()
@@ -339,6 +349,27 @@ function AppRoutes() {
       // Clear local state even if the network call fails.
     }
     setUser(null)
+    navigate(PATHS.landing)
+  }
+
+  const redirectToSignIn = () => {
+    navigate(PATHS.signin)
+    setUser(null)
+    setAuthLoading(false)
+    setScan(null)
+    setProblem(null)
+  }
+
+  /**
+   * Cancel out of storage setup. Only forces a fresh sign-in when GitHub
+   * access was actually revoked — someone who just clicked Connect by
+   * mistake keeps their session and can pick up onboarding again later.
+   */
+  const cancelConnect = (isRevoked) => {
+    if (isRevoked) {
+      redirectToSignIn()
+      return
+    }
     navigate(PATHS.landing)
   }
 
@@ -363,7 +394,8 @@ function AppRoutes() {
       <ConnectView
         provider={connectProvider}
         onDone={connectDone}
-        onCancel={() => navigate(PATHS.signin)}
+        onCancel={cancelConnect}
+        onReconnect={reconnectGitHub}
         storageError={storageError}
       />
     )
@@ -397,9 +429,7 @@ function AppRoutes() {
           element={
             authed && storageReady
               ? <Navigate to={PATHS.dashboard} replace />
-              : authed
-                ? <Navigate to={PATHS.connect} replace />
-                : <SignInView onNav={nav} onAuth={auth} />
+              : <SignInView onNav={nav} onAuth={auth} />
           }
         />
         <Route path={PATHS.connect} element={<ConnectRoute />} />
