@@ -1332,6 +1332,121 @@ test('deleteScanById removes one scan file and leaves the others', async () => {
   assert.equal(updatedManifest.summary.scanCount, 1);
 });
 
+test('deleteAllScans removes every scan file and resets caches', async () => {
+  const storageService = new StorageService();
+  const account = {
+    storage: { ...STORAGE_REF, provider: 'github', branch: 'main' },
+  };
+  const client = createMockGitHubClient({
+    files: {
+      'vizably.json': {
+        content: JSON.stringify(
+          manifest({ summary: { scanCount: 2, lastScanAt: '2026-07-11T12:00:00Z' } }),
+        ),
+        sha: 'sha-manifest',
+      },
+      'scans/index.json': {
+        content: JSON.stringify({
+          schemaVersion: 1,
+          scans: [
+            {
+              id: 'a',
+              url: 'https://a.example',
+              host: 'a.example',
+              scannedAt: '2026-07-11T12:00:00Z',
+              file: 'scans/a_a.example.json',
+            },
+            {
+              id: 'b',
+              url: 'https://b.example',
+              host: 'b.example',
+              scannedAt: '2026-07-10T12:00:00Z',
+              file: 'scans/b_b.example.json',
+            },
+          ],
+        }),
+        sha: 'sha-index',
+      },
+      'scans/a_a.example.json': {
+        content: JSON.stringify({
+          id: 'a',
+          url: 'https://a.example',
+          scannedAt: '2026-07-11T12:00:00Z',
+          result: { problems: {} },
+        }),
+        sha: 'sha-a',
+      },
+      'scans/b_b.example.json': {
+        content: JSON.stringify({
+          id: 'b',
+          url: 'https://b.example',
+          scannedAt: '2026-07-10T12:00:00Z',
+          result: { problems: {} },
+        }),
+        sha: 'sha-b',
+      },
+      'README.md': { content: '# keep\n', sha: 'sha-readme' },
+    },
+  });
+
+  const result = await storageService.deleteAllScans(account, {
+    githubClient: client,
+  });
+
+  assert.equal(result.deletedCount, 2);
+  assert.equal(result.scanCount, 0);
+  assert.deepEqual(result.scans, []);
+  assert.equal(client.files['scans/a_a.example.json'], undefined);
+  assert.equal(client.files['scans/b_b.example.json'], undefined);
+  assert.ok(client.files['scans/index.json']);
+  assert.ok(client.files['vizably.json']);
+  assert.equal(client.files['README.md'].content, '# keep\n');
+
+  const index = JSON.parse(client.files['scans/index.json'].content);
+  assert.deepEqual(index.scans, []);
+
+  const updatedManifest = JSON.parse(client.files['vizably.json'].content);
+  assert.equal(updatedManifest.summary.scanCount, 0);
+  assert.equal(updatedManifest.summary.lastScanAt, null);
+  assert.ok(updatedManifest.account.id);
+});
+
+test('deleteAllScans is idempotent when already empty', async () => {
+  const storageService = new StorageService();
+  const client = createMockGitHubClient({
+    files: {
+      'vizably.json': {
+        content: JSON.stringify(manifest({ summary: { scanCount: 0, lastScanAt: null } })),
+        sha: 'sha-manifest',
+      },
+      'scans/index.json': {
+        content: JSON.stringify({ schemaVersion: 1, scans: [] }),
+        sha: 'sha-index',
+      },
+    },
+  });
+
+  const result = await storageService.deleteAllScans(
+    { storage: { ...STORAGE_REF, provider: 'github', branch: 'main' } },
+    { githubClient: client },
+  );
+
+  assert.equal(result.deletedCount, 0);
+  assert.equal(result.scanCount, 0);
+});
+
+test('deleteAllScans stubs google until Phase 3', async () => {
+  const storageService = new StorageService();
+  await assert.rejects(
+    () =>
+      storageService.deleteAllScans(
+        { storage: { provider: 'google', id: 'folder' } },
+        {},
+      ),
+    (err) => err.code === 'PROVIDER_NOT_AVAILABLE' && err.status === 501,
+  );
+});
+
 test('deleteScanById returns not found for unknown id', async () => {
   const storageService = new StorageService();
   const client = createMockGitHubClient({

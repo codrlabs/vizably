@@ -129,6 +129,7 @@ Provider-neutral routes; Google OAuth endpoints stubbed until Phase 3.
 - [x] In `postScan`: if authenticated and `req.user.storage`, build clients and
       `saveScanResults(...)` — a storage failure logs a warning, **never** fails the scan
 - [x] `DELETE /api/scans/:id` — `deleteSavedScan` → `storageService.deleteScanById`
+- [x] `DELETE /api/scans` — `deleteAllSavedScans` → `storageService.deleteAllScans` (#110)
       (see [`scanDeletion.md`](./scanDeletion.md))
 
 ### Phase 1 follow-ups (post-merge)
@@ -155,6 +156,7 @@ Provider-neutral API shape; **GitHub picker wired**, Google deferred to Phase 3.
 - [x] `setupStorage(provider, storageRef, action)` → `POST /api/auth/storage`
 - [x] Keep `runScan`, `getScanResults`, `getProblem`
 - [x] `deleteScan(id)` → `DELETE /api/scans/:id`
+- [x] `deleteAllScans()` → `DELETE /api/scans`
 
 ### ConnectView (`frontend/src/views/ConnectView.jsx`) — the picker
 

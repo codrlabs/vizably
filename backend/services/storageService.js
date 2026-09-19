@@ -956,6 +956,132 @@ class StorageService {
   }
 
   /**
+   * Delete every immutable saved scan and reset index/manifest caches.
+   * Leaves vizably.json identity and the repository itself intact.
+   * @param {object} account session user (with storage binding)
+   * @param {StorageClients} clients
+   * @returns {Promise<{ deletedCount: number, scanCount: number, scans: object[] }>}
+   */
+  async deleteAllScans(account, clients) {
+    if (account?.storage?.provider === 'google') {
+      const err = new Error(GOOGLE_NOT_AVAILABLE);
+      err.status = 501;
+      err.code = 'PROVIDER_NOT_AVAILABLE';
+      throw err;
+    }
+    if (!clients.githubClient) {
+      throw new Error('GitHub client is required to delete saved scans');
+    }
+
+    const maxAttempts = 3;
+    for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
+      try {
+        return await this._deleteAllScansOnce(account, clients);
+      } catch (err) {
+        const canRetry = this._isRefConflict(err) && attempt < maxAttempts - 1;
+        if (!canRetry) {
+          throw err;
+        }
+      }
+    }
+
+    throw new Error('GitHub write failed after retries');
+  }
+
+  /**
+   * @param {object} account
+   * @param {StorageClients} clients
+   * @private
+   */
+  async _deleteAllScansOnce(account, clients) {
+    const storageRef = account.storageRef ?? account.storage;
+    const { owner, repo } = this._parseGitHubRef(storageRef);
+    const octokit = clients.githubClient;
+    const branch = await this._resolveGitHubBranch(
+      octokit,
+      owner,
+      repo,
+      storageRef.branch,
+    );
+
+    const scanEntries = await this._listGitHubDirectory(
+      octokit,
+      owner,
+      repo,
+      SCANS_DIR,
+      branch,
+    );
+    const scanFiles = scanEntries.filter(
+      (entry) =>
+        entry.type === 'file' &&
+        entry.name.endsWith('.json') &&
+        entry.name !== 'index.json',
+    );
+
+    const manifestFile = await this._readAccountManifest(octokit, owner, repo, branch);
+    if (!manifestFile) {
+      throw new Error('Account manifest not found');
+    }
+
+    const { manifest } = this._normalizeManifestBrand(
+      this._parseJson(manifestFile.content, 'manifest'),
+    );
+    const emptyIndex = { schemaVersion: 1, scans: [] };
+    const updatedManifest = this._updateManifestSummary(manifest, emptyIndex, null);
+    updatedManifest.summary.lastScanAt = null;
+    updatedManifest.account.updatedAt = new Date().toISOString();
+
+    const indexFile = await this._readGitHubFile(octokit, owner, repo, INDEX_PATH, branch);
+
+    /** @type {Array<{ path: string, delete?: boolean, sha?: string, content?: string }>} */
+    const files = scanFiles.map((entry) => ({
+      path: `${SCANS_DIR}/${entry.name}`,
+      delete: true,
+      sha: entry.sha,
+    }));
+
+    files.push({
+      path: INDEX_PATH,
+      content: JSON.stringify(emptyIndex, null, 2) + '\n',
+      sha: indexFile?.sha,
+    });
+    files.push({
+      path: MANIFEST_PATH,
+      content: JSON.stringify(updatedManifest, null, 2) + '\n',
+      ...(manifestFile.path === MANIFEST_PATH ? { sha: manifestFile.sha } : {}),
+    });
+
+    // Idempotent when already empty — still refresh caches if they disagree.
+    if (scanFiles.length === 0 && indexFile) {
+      const currentIndex = this._parseJson(indexFile.content, 'index');
+      if (
+        Array.isArray(currentIndex?.scans) &&
+        currentIndex.scans.length === 0 &&
+        (manifest.summary?.scanCount ?? 0) === 0
+      ) {
+        return { deletedCount: 0, scanCount: 0, scans: [] };
+      }
+    }
+
+    await this._writeGitHubFiles(
+      octokit,
+      owner,
+      repo,
+      branch,
+      files,
+      scanFiles.length === 0
+        ? 'Reset accessibility scan caches'
+        : `Delete all accessibility scans (${scanFiles.length})`,
+    );
+
+    return {
+      deletedCount: scanFiles.length,
+      scanCount: 0,
+      scans: [],
+    };
+  }
+
+  /**
    * One save attempt: reconcile from scan-file truth, append prepared scan, write.
    * @param {object} account
    * @param {object} prepared from `_prepareScanWrite`
