@@ -108,7 +108,7 @@ export default function AccountView({ onSignOut, onExport, user, shellUser, prov
               <Switch on={autoDelete} onToggle={() => setAutoDelete((v) => !v)} />
             </RowItem>
             <div style={{ borderTop: '1px solid var(--border-subtle)' }} />
-            <RowItem icon="Download" title="Download my data" sub="Export your account and saved reports as JSON, or as a PDF via your browser’s print dialog.">
+            <RowItem icon="Download" title="Download my data" sub="Export your account and saved reports as a JSON or PDF file.">
               <div role="group" aria-label="Export format" style={{ display: 'flex', gap: 8 }}>
                 {['json', 'pdf'].map((format) => (
                   <Button key={format} aria-label={`Export as ${format.toUpperCase()}`} variant="secondary" size="sm" disabled={!onExport || Boolean(exporting)} onClick={() => handleExport(format)}>

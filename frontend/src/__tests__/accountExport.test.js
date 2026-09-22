@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest'
-import { buildAccountExport, toPrintableHtml } from '../lib/accountExport'
+import { buildAccountExport } from '../lib/accountExport'
 
 const USER = {
   displayName: 'Sam',
@@ -22,15 +22,29 @@ describe('accountExport', () => {
     expect(data.scans[1]).toMatchObject({ id: 'b', error: 'gone' })
   })
 
-  it('escapes third-party scan content in the printable HTML', async () => {
+  it('downloads a PDF containing the saved report', async () => {
+    const save = vi.fn()
+    const text = []
+    vi.doMock('jspdf', () => ({
+      jsPDF: class {
+        internal = { pageSize: { getWidth: () => 595, getHeight: () => 842 } }
+        setFont() {} setFontSize() {} setTextColor() {} addPage() {}
+        splitTextToSize(t) { return [t] }
+        text(t) { text.push(t) }
+        save = save
+      },
+    }))
+    const { downloadPdf } = await import('../lib/accountExport')
     const data = await buildAccountExport(USER, async (id) => ({
       id,
-      url: 'https://x.test',
-      result: { problems: { multimedia: [{ name: '<img src=x onerror=alert(1)>', rootCause: 'r' }] }, whatsGood: ['ok'] },
+      url: `https://${id}.test`,
+      result: { problems: { multimedia: [{ name: 'Missing captions', impact: 'serious' }] }, whatsGood: ['ok'] },
     }))
-    const html = toPrintableHtml(data)
-    expect(html).not.toContain('<img src=x')
-    expect(html).toContain('&lt;img src=x onerror=alert(1)&gt;')
-    expect(html).toContain('Multimedia (1)')
+    await downloadPdf(data)
+
+    expect(save).toHaveBeenCalledWith(expect.stringMatching(/^vizably-data-\d{4}-\d{2}-\d{2}\.pdf$/))
+    expect(text).toContain('https://a.test')
+    expect(text).toContain('Multimedia (1)')
+    expect(text).toContain('- Missing captions (serious)')
   })
 })
