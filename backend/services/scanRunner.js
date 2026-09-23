@@ -70,6 +70,23 @@ async function resolveBrowser(injected) {
   };
 }
 
+/**
+ * Emit one JSON line per scan so logs can be grepped (`"event":"scan"`) or
+ * shipped to an aggregator as-is.
+ */
+function logScan(fields) {
+  const line = JSON.stringify({ event: 'scan', ...fields });
+  if (fields.outcome === 'ok') console.log(line);
+  else console.error(line);
+}
+
+/** Violation count per bucket, e.g. `{ visualAccessibility: 3, ... }`. */
+function countViolations(result) {
+  return Object.fromEntries(
+    Object.entries(result?.problems ?? {}).map(([bucket, list]) => [bucket, list.length]),
+  );
+}
+
 class ScanRunner {
   /**
    * @param {object} [deps]
@@ -88,26 +105,42 @@ class ScanRunner {
   }
 
   async run(url) {
+    const startedAt = Date.now();
+    const fail = (err) =>
+      logScan({
+        url,
+        outcome: 'error',
+        durationMs: Date.now() - startedAt,
+        errorClass: err.name,
+        error: err.message,
+      });
+
     const guard = this.validate(url);
 
     if (!guard.ok) {
-      throw new Error(`SSRF validation failed: ${guard.reason}`);
+      const err = new Error(`SSRF validation failed: ${guard.reason}`);
+      fail(err);
+      throw err;
     }
 
     // In Docker we use the system Chromium installed via apk (see Dockerfile)
     // because Puppeteer's bundled download doesn't run on Alpine/musl.
     // `--no-sandbox` is required when the container runs as root. On Vercel,
     // @sparticuz/chromium supplies both the args and the unpacked binary.
-    const { puppeteer, chromium } = await resolveBrowser(this.puppeteer);
     let browser;
-
-    browser = await puppeteer.launch({
-      headless: true,
-      executablePath:
-        process.env.PUPPETEER_EXECUTABLE_PATH ||
-        (chromium ? await chromium.executablePath() : undefined),
-      args: chromium ? chromium.args : ['--no-sandbox', '--disable-setuid-sandbox'],
-    });
+    try {
+      const { puppeteer, chromium } = await resolveBrowser(this.puppeteer);
+      browser = await puppeteer.launch({
+        headless: true,
+        executablePath:
+          process.env.PUPPETEER_EXECUTABLE_PATH ||
+          (chromium ? await chromium.executablePath() : undefined),
+        args: chromium ? chromium.args : ['--no-sandbox', '--disable-setuid-sandbox'],
+      });
+    } catch (err) {
+      fail(err);
+      throw err;
+    }
     try {
       const page = await browser.newPage();
       // Many sites ship a strict CSP that blocks inline script injection;
@@ -129,9 +162,18 @@ class ScanRunner {
         });
       });
 
-      return this.transform(axeResults);
+      const result = this.transform(axeResults);
+      const violations = countViolations(result);
+      logScan({
+        url,
+        outcome: 'ok',
+        durationMs: Date.now() - startedAt,
+        violations,
+        totalViolations: Object.values(violations).reduce((a, b) => a + b, 0),
+      });
+      return result;
     } catch (err) {
-      console.error(err);
+      fail(err);
       return null;
     } finally {
       if (browser) {
