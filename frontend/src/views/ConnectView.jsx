@@ -43,6 +43,14 @@ const STATUS_UI = {
   },
 }
 
+function isGitHubAccessLost(err) {
+  return (
+    err?.code === 'GITHUB_AUTH_REVOKED' ||
+    err?.status === 401 ||
+    /GitHub client is not available/i.test(err?.message || '')
+  )
+}
+
 function reasonMessage(reason) {
   switch (reason) {
     case 'malformed_manifest':
@@ -78,7 +86,8 @@ function storageRefFromHit(hit) {
  * @param {object} props
  * @param {'github' | 'google'} props.provider
  * @param {() => void} props.onDone
- * @param {() => void} props.onCancel
+ * @param {(isRevoked?: boolean) => void} props.onCancel
+ * @param {() => void | Promise<void>} [props.onReconnect]
  * @param {string} [props.storageError]
  * @param {import('../lib/apiClient').ApiClient} [props.client]
  */
@@ -86,6 +95,7 @@ export default function ConnectView({
   provider,
   onDone,
   onCancel,
+  onReconnect,
   storageError = null,
   client = apiClient,
 }) {
@@ -103,6 +113,7 @@ export default function ConnectView({
   const [validating, setValidating] = useState(false)
   const [confirming, setConfirming] = useState(false)
   const [error, setError] = useState(storageError)
+  const [needsReconnect, setNeedsReconnect] = useState(false)
 
   const selectedHit = useMemo(
     () => stores.find((hit) => hit.storageRef.id === selectedId) ?? null,
@@ -128,10 +139,11 @@ export default function ConnectView({
         !activeStorageRef))
 
   const confirmLabel = useMemo(() => {
+    if (needsReconnect) return 'Reconnect GitHub'
     if (emptyAccount) return 'Set up Vizably storage'
     if (statusUi?.button) return statusUi.button
     return 'Continue'
-  }, [emptyAccount, statusUi])
+  }, [needsReconnect, emptyAccount, statusUi])
 
   const runValidation = useCallback(
     async (storageRef) => {
@@ -161,6 +173,7 @@ export default function ConnectView({
     if (!isGitHub) return []
     setDiscovering(true)
     setError(null)
+    setNeedsReconnect(false)
     try {
       const result = await client.discoverStorages('github')
       const list = result.stores ?? []
@@ -171,7 +184,13 @@ export default function ConnectView({
       })
       return list
     } catch (err) {
-      setError(err.message || 'Failed to look up Vizably storage')
+      const lost = isGitHubAccessLost(err)
+      setNeedsReconnect(lost)
+      setError(
+        lost
+          ? 'GitHub access was revoked. Reconnect to authorize Vizably again.'
+          : err.message || 'Failed to look up Vizably storage',
+      )
       setStores([])
       setSelectedId('')
       return []
@@ -263,7 +282,24 @@ export default function ConnectView({
     await runValidation(ref)
   }
 
+  const handleReconnect = async () => {
+    if (onReconnect) {
+      await onReconnect()
+      return
+    }
+    try {
+      await client.logout()
+    } catch {
+      // Continue to GitHub even if logout fails (stale cookie).
+    }
+    client.githubLogin()
+  }
+
   const handleConfirm = async () => {
+    if (needsReconnect) {
+      await handleReconnect()
+      return
+    }
     if (emptyAccount) {
       await handleCreateDefault()
       return
@@ -302,7 +338,7 @@ export default function ConnectView({
           <p style={{ color: 'var(--text-muted)', fontSize: 'var(--text-sm)', lineHeight: 1.5 }}>
             Google Drive storage uses the Google Picker and is not wired yet. Use GitHub for now.
           </p>
-          <Button variant="secondary" size="lg" onClick={onCancel} style={{ marginTop: 20 }}>
+          <Button variant="secondary" size="lg" onClick={() => onCancel(needsReconnect)} style={{ marginTop: 20 }}>
             Back
           </Button>
         </div>
@@ -336,9 +372,11 @@ export default function ConnectView({
           >
             {providerIcon}
             <span style={{ font: 'var(--font-label)', color: 'var(--text-strong)' }}>
-              {pv.name} connected
+              {needsReconnect ? `${pv.name} access revoked` : `${pv.name} connected`}
             </span>
-            <span style={{ color: 'var(--green-600)' }}>{Ico('Check', 15, 'currentColor')}</span>
+            <span style={{ color: needsReconnect ? 'var(--sev-serious-fg)' : 'var(--green-600)' }}>
+              {Ico(needsReconnect ? 'TriangleAlert' : 'Check', 15, 'currentColor')}
+            </span>
           </div>
           <h1 style={{ fontSize: 'var(--text-xl)', margin: '0 0 6px' }}>
             Connect your Vizably storage
@@ -561,7 +599,7 @@ export default function ConnectView({
         </div>
 
         <div style={{ display: 'flex', gap: 10, marginTop: 18 }}>
-          <Button variant="secondary" size="lg" onClick={onCancel}>
+          <Button variant="secondary" size="lg" onClick={() => onCancel(needsReconnect)}>
             Back
           </Button>
           <Button
@@ -573,10 +611,10 @@ export default function ConnectView({
               creating ||
               confirming ||
               validating ||
-              (emptyAccount ? false : confirmBlocked)
+              (needsReconnect || emptyAccount ? false : confirmBlocked)
             }
             onClick={handleConfirm}
-            iconRight={Ico('ArrowRight', 17, '#fff')}
+            iconRight={Ico(needsReconnect ? 'Github' : 'ArrowRight', 17, '#fff')}
           >
             {creating ? 'Creating…' : confirming ? 'Connecting…' : confirmLabel}
           </Button>
