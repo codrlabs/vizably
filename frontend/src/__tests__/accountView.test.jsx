@@ -86,4 +86,12 @@ describe('AccountView', () => {
     fireEvent.click(screen.getByRole('button', { name: /export as json/i }))
     expect(await screen.findByRole('status')).toHaveTextContent(/^100 of 100 scans exported\.$/)
   })
+
+  it('says so when there are no saved scans', async () => {
+    const onExport = vi.fn().mockResolvedValue({ total: 0, failed: 0 })
+    render(<AccountView onSignOut={vi.fn()} onExport={onExport} user={USER} provider="github" />)
+
+    fireEvent.click(screen.getByRole('button', { name: /export as json/i }))
+    expect(await screen.findByRole('status')).toHaveTextContent('No saved scans to export.')
+  })
 })

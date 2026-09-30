@@ -24,7 +24,7 @@ export default function AccountView({ onSignOut, onExport, user, shellUser, prov
         const { total, failed } = summary
         setExportNote({
           failed,
-          text: `${total - failed} of ${total} scans exported.${failed ? ` ${failed} couldn't be loaded and ${failed === 1 ? 'is' : 'are'} listed in the file as errors.` : ''}`,
+          text: total === 0 ? 'No saved scans to export.' : `${total - failed} of ${total} scans exported.${failed ? ` ${failed} couldn't be loaded and ${failed === 1 ? 'is' : 'are'} listed in the file as errors.` : ''}`,
         })
       }
     } catch (err) {
