@@ -195,6 +195,62 @@ describe('ConnectView', () => {
     await waitFor(() => expect(client.discoverStorages).toHaveBeenCalled())
   })
 
+  it('Back does not signal a revoke when access is fine', async () => {
+    const onCancel = vi.fn()
+    const client = mockClient()
+    render(
+      <ConnectView provider="github" onDone={vi.fn()} onCancel={onCancel} client={client} />,
+    )
+
+    expect(await screen.findByText('Vizably account found')).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: /^back$/i }))
+    expect(onCancel).toHaveBeenCalledWith(false)
+  })
+
+  it('offers reconnect instead of create when GitHub access was revoked', async () => {
+    const onReconnect = vi.fn()
+    const err = new Error('GitHub access was revoked. Sign in with GitHub again.')
+    err.status = 401
+    err.code = 'GITHUB_AUTH_REVOKED'
+    const client = mockClient({
+      discoverStorages: vi.fn().mockRejectedValue(err),
+    })
+
+    render(
+      <ConnectView
+        provider="github"
+        onDone={vi.fn()}
+        onCancel={vi.fn()}
+        onReconnect={onReconnect}
+        client={client}
+      />,
+    )
+
+    expect(await screen.findByText(/Reconnect to authorize/i)).toBeInTheDocument()
+    expect(screen.getByText(/GitHub access revoked/i)).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: /reconnect github/i }))
+    await waitFor(() => expect(onReconnect).toHaveBeenCalled())
+    expect(client.createStorage).not.toHaveBeenCalled()
+  })
+
+  it('Back signals a revoke so the caller can force a fresh sign-in', async () => {
+    const onCancel = vi.fn()
+    const err = new Error('GitHub access was revoked. Sign in with GitHub again.')
+    err.status = 401
+    err.code = 'GITHUB_AUTH_REVOKED'
+    const client = mockClient({
+      discoverStorages: vi.fn().mockRejectedValue(err),
+    })
+
+    render(
+      <ConnectView provider="github" onDone={vi.fn()} onCancel={onCancel} client={client} />,
+    )
+
+    expect(await screen.findByText(/Reconnect to authorize/i)).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: /^back$/i }))
+    expect(onCancel).toHaveBeenCalledWith(true)
+  })
+
   it('shows install hop when create returns needsInstall', async () => {
     const client = mockClient({
       discoverStorages: vi.fn().mockResolvedValue({

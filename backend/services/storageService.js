@@ -314,11 +314,13 @@ class StorageService {
       const { data: user } = await octokit.rest.users.getAuthenticated();
       owner = user.login;
     } catch (err) {
-      throw new Error(
+      const wrapped = new Error(
         err?.status === 401
           ? 'GitHub authentication failed. Sign out and sign in again.'
           : 'Could not look up your GitHub username.',
       );
+      wrapped.status = err?.status;
+      throw wrapped;
     }
 
     try {

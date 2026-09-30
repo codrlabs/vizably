@@ -318,6 +318,98 @@ test('GET /api/auth/storages returns mapped GitHub repos', async () => {
   assert.equal(res.body.storages[0].id, 'R_kg');
 });
 
+test('GET /api/auth/storages returns GITHUB_AUTH_REVOKED when no client is available', async () => {
+  const app = createAuthedApp({
+    user: AUTHED_USER,
+    authService: {
+      clientsFor: async () => ({}),
+    },
+    storageService: {
+      listGitHubRepos: async () => {
+        throw new Error('should not be called without a client');
+      },
+    },
+  });
+  const res = await request(app).get('/api/auth/storages?provider=github');
+  assert.equal(res.status, 401);
+  assert.equal(res.body.code, 'GITHUB_AUTH_REVOKED');
+});
+
+test('GET /api/auth/storages returns GITHUB_AUTH_REVOKED when GitHub rejects the token', async () => {
+  const app = createAuthedApp({
+    user: AUTHED_USER,
+    authService: {
+      clientsFor: async () => ({ githubClient: { mock: true } }),
+    },
+    storageService: {
+      listGitHubRepos: async () => {
+        const err = new Error('Bad credentials');
+        err.status = 401;
+        throw err;
+      },
+    },
+  });
+  const res = await request(app).get('/api/auth/storages?provider=github');
+  assert.equal(res.status, 401);
+  assert.equal(res.body.code, 'GITHUB_AUTH_REVOKED');
+});
+
+test('GET /api/auth/storage/discover returns GITHUB_AUTH_REVOKED when no client is available', async () => {
+  const app = createAuthedApp({
+    user: AUTHED_USER,
+    authService: {
+      clientsFor: async () => ({}),
+    },
+    storageService: {
+      discoverAccountStores: async () => {
+        throw new Error('should not be called without a client');
+      },
+    },
+  });
+  const res = await request(app).get('/api/auth/storage/discover?provider=github');
+  assert.equal(res.status, 401);
+  assert.equal(res.body.code, 'GITHUB_AUTH_REVOKED');
+});
+
+test('GET /api/auth/storage/discover returns GITHUB_AUTH_REVOKED when GitHub rejects the token', async () => {
+  const app = createAuthedApp({
+    user: AUTHED_USER,
+    authService: {
+      clientsFor: async () => ({ githubUserClient: { mock: true } }),
+    },
+    storageService: {
+      discoverAccountStores: async () => {
+        const err = new Error('GitHub authentication failed. Sign out and sign in again.');
+        err.status = 401;
+        throw err;
+      },
+    },
+  });
+  const res = await request(app).get('/api/auth/storage/discover?provider=github');
+  assert.equal(res.status, 401);
+  assert.equal(res.body.code, 'GITHUB_AUTH_REVOKED');
+});
+
+test('POST /api/auth/storage/create returns GITHUB_AUTH_REVOKED when no client is available', async () => {
+  const app = createAuthedApp({
+    user: AUTHED_USER,
+    authService: {
+      clientsFor: async () => ({}),
+      getInstallationSetupUrl: async () => 'https://github.com/settings/installations',
+    },
+    storageService: {
+      createGitHubRepository: async () => {
+        throw new Error('should not be called without a client');
+      },
+    },
+  });
+  const res = await request(app)
+    .post('/api/auth/storage/create')
+    .send({ name: 'vizably-new' });
+  assert.equal(res.status, 401);
+  assert.equal(res.body.code, 'GITHUB_AUTH_REVOKED');
+});
+
 test('POST /api/auth/storage/create returns storageRef and needsInstall', async () => {
   const app = createAuthedApp({
     user: AUTHED_USER,
