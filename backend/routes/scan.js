@@ -3,7 +3,7 @@
  *   - POST /api/scan
  *   - GET  /api/scan-results
  *   - GET  /api/scans
- *   - DELETE /api/scans
+ *   - DELETE /api/scans        (body: { ids })
  *   - GET  /api/scans/:id
  *   - DELETE /api/scans/:id
  *
@@ -23,7 +23,7 @@ function makeScanRouter(controller) {
   router.get('/scan-results', controller.getScanResults);
   router.get('/scans', controller.getSavedScans);
   // Bulk delete must be registered before /scans/:id.
-  router.delete('/scans', controller.deleteAllSavedScans);
+  router.delete('/scans', controller.deleteSavedScans);
   router.get('/scans/:id', controller.getSavedScan);
   router.delete('/scans/:id', controller.deleteSavedScan);
   return router;

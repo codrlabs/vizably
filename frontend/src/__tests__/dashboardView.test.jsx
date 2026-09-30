@@ -159,4 +159,70 @@ describe('DashboardView', () => {
     expect(await screen.findByRole('alert')).toHaveTextContent(/refused the delete/i)
     expect(screen.getByLabelText(/select scan example.com/i)).toBeChecked()
   })
+
+  it('asks for confirm before a per-row delete and does not open the scan', async () => {
+    const onOpen = vi.fn()
+    const onDelete = vi.fn().mockResolvedValue(undefined)
+    render(
+      <DashboardView
+        onNav={vi.fn()}
+        onOpen={onOpen}
+        onDelete={onDelete}
+        onDeleteMany={vi.fn()}
+        saved={SAVED}
+        provider="github"
+        user={{ email: 'sam@example.com' }}
+        storage={{ full_name: 'sam/vizably-scans' }}
+      />,
+    )
+
+    // Per-row delete sits next to the checkbox.
+    expect(screen.getByLabelText(/select scan example.com/i)).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: /delete scan example.com/i }))
+    expect(onOpen).not.toHaveBeenCalled()
+    expect(screen.getByText(/delete this scan/i)).toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('button', { name: /yes, delete/i }))
+    await waitFor(() => expect(onDelete).toHaveBeenCalledWith(SAVED[0]))
+    expect(onOpen).not.toHaveBeenCalled()
+  })
+
+  it('cancel leaves the list alone without calling onDelete', () => {
+    const onDelete = vi.fn()
+    render(
+      <DashboardView
+        onNav={vi.fn()}
+        onOpen={vi.fn()}
+        onDelete={onDelete}
+        saved={SAVED}
+        provider="github"
+        user={{ email: 'sam@example.com' }}
+      />,
+    )
+
+    fireEvent.click(screen.getByRole('button', { name: /delete scan example.com/i }))
+    fireEvent.click(screen.getByRole('button', { name: /cancel/i }))
+    expect(onDelete).not.toHaveBeenCalled()
+    expect(screen.queryByText(/delete this scan/i)).not.toBeInTheDocument()
+  })
+
+  it('never counts or sends a selected id that is no longer on screen', async () => {
+    const onDeleteMany = vi.fn().mockResolvedValue(undefined)
+    const props = {
+      onNav: vi.fn(),
+      onOpen: vi.fn(),
+      onDeleteMany,
+      provider: 'github',
+      user: { email: 'sam@example.com' },
+    }
+    const { rerender } = render(<DashboardView {...props} saved={SAVED} />)
+
+    fireEvent.click(screen.getByLabelText(/^select all scans$/i))
+    // s2 disappears (e.g. deleted on another device and the list resynced).
+    rerender(<DashboardView {...props} saved={[SAVED[0]]} />)
+
+    fireEvent.click(screen.getByRole('button', { name: /delete 1 selected/i }))
+    fireEvent.click(screen.getByRole('button', { name: /yes, delete/i }))
+    await waitFor(() => expect(onDeleteMany).toHaveBeenCalledWith(['s1']))
+  })
 })

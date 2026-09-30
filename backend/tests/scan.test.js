@@ -509,7 +509,7 @@ test('deleteSavedScan returns 404 for SCAN_NOT_FOUND', async () => {
   assert.equal(out.statusCode, 404);
 });
 
-test('deleteAllSavedScans clears every scan and updates session scanCount', async () => {
+test('deleteSavedScans deletes the given ids and updates session scanCount', async () => {
   const ScanController = require('../controllers/scanController');
   let persisted = false;
   const ctrl = new ScanController({
@@ -522,11 +522,10 @@ test('deleteAllSavedScans clears every scan and updates session scanCount', asyn
       },
     },
     storageService: {
-      deleteAllScans: async () => ({
-        deletedCount: 2,
-        scanCount: 0,
-        scans: [],
-      }),
+      deleteScans: async (_user, ids) => {
+        assert.deepEqual(ids, ['a', 'b']);
+        return { deletedCount: 2, scanCount: 0, scans: [] };
+      },
     },
   });
 
@@ -536,9 +535,10 @@ test('deleteAllSavedScans clears every scan and updates session scanCount', asyn
       storage: { id: 'R_kg', full_name: 'sam/repo' },
       account: { scanCount: 2 },
     },
+    body: { ids: ['a', 'b'] },
   };
   const out = mockRes();
-  await ctrl.deleteAllSavedScans(req, out.res);
+  await ctrl.deleteSavedScans(req, out.res);
 
   assert.equal(out.statusCode, 200);
   assert.deepEqual(out.body, { deletedCount: 2, scanCount: 0, scans: [] });
@@ -546,7 +546,7 @@ test('deleteAllSavedScans clears every scan and updates session scanCount', asyn
   assert.equal(persisted, true);
 });
 
-test('deleteAllSavedScans requires auth and attached storage', async () => {
+test('deleteSavedScans requires auth and attached storage', async () => {
   const ScanController = require('../controllers/scanController');
   const ctrl = new ScanController({
     mockScanResults,
@@ -555,7 +555,7 @@ test('deleteAllSavedScans requires auth and attached storage', async () => {
     storageService: {},
   });
   const out = mockRes();
-  await ctrl.deleteAllSavedScans(
+  await ctrl.deleteSavedScans(
     {
       isAuthenticated: () => false,
       user: null,
@@ -563,4 +563,26 @@ test('deleteAllSavedScans requires auth and attached storage', async () => {
     out.res,
   );
   assert.equal(out.statusCode, 401);
+});
+
+test('deleteSavedScans rejects a request without ids', async () => {
+  const ScanController = require('../controllers/scanController');
+  const ctrl = new ScanController({
+    mockScanResults,
+    scanRunner: mockScanRunner,
+    authService: { clientsFor: async () => ({ githubClient: {} }) },
+    storageService: {
+      deleteScans: async () => {
+        const err = new Error('Scan ids are required');
+        err.code = 'SCAN_IDS_REQUIRED';
+        throw err;
+      },
+    },
+  });
+  const out = mockRes();
+  await ctrl.deleteSavedScans(
+    { isAuthenticated: () => true, user: { storage: { id: 'R_kg' } }, body: {} },
+    out.res,
+  );
+  assert.equal(out.statusCode, 400);
 });

@@ -222,12 +222,16 @@ export class ApiClient {
   }
 
   /**
-   * Delete every saved scan from attached storage (keeps the account store).
+   * Delete the given saved scans in one storage write (keeps the account store).
+   * Pass the ids the user actually saw so scans saved elsewhere since are kept.
+   * @param {string[]} ids
    * @returns {Promise<{ deletedCount: number, scanCount: number, scans: object[] }>}
    */
-  deleteAllScans() {
+  deleteScans(ids) {
     return this._request('/api/scans', {
       method: 'DELETE',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ids }),
     })
   }
 

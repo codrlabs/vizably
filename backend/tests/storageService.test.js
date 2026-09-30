@@ -1360,7 +1360,7 @@ test('deleteScanById removes one scan file and leaves the others', async () => {
   assert.equal(updatedManifest.summary.scanCount, 1);
 });
 
-test('deleteAllScans removes every scan file and resets caches', async () => {
+test('deleteScans removes only the given ids and keeps scans saved elsewhere', async () => {
   const storageService = new StorageService();
   const account = {
     storage: { ...STORAGE_REF, provider: 'github', branch: 'main' },
@@ -1413,33 +1413,79 @@ test('deleteAllScans removes every scan file and resets caches', async () => {
         }),
         sha: 'sha-b',
       },
+      // Saved from another device after the dashboard loaded — not in the ids.
+      'scans/c_c.example.json': {
+        content: JSON.stringify({
+          id: 'c',
+          url: 'https://c.example',
+          scannedAt: '2026-07-12T12:00:00Z',
+          result: { problems: {} },
+        }),
+        sha: 'sha-c',
+      },
       'README.md': { content: '# keep\n', sha: 'sha-readme' },
     },
   });
 
-  const result = await storageService.deleteAllScans(account, {
+  const result = await storageService.deleteScans(account, ['a', 'b'], {
     githubClient: client,
   });
 
   assert.equal(result.deletedCount, 2);
-  assert.equal(result.scanCount, 0);
-  assert.deepEqual(result.scans, []);
+  assert.equal(result.scanCount, 1);
+  assert.deepEqual(result.scans.map((s) => s.id), ['c']);
   assert.equal(client.files['scans/a_a.example.json'], undefined);
   assert.equal(client.files['scans/b_b.example.json'], undefined);
-  assert.ok(client.files['scans/index.json']);
-  assert.ok(client.files['vizably.json']);
+  assert.ok(client.files['scans/c_c.example.json']);
   assert.equal(client.files['README.md'].content, '# keep\n');
 
   const index = JSON.parse(client.files['scans/index.json'].content);
-  assert.deepEqual(index.scans, []);
+  assert.deepEqual(index.scans.map((s) => s.id), ['c']);
 
   const updatedManifest = JSON.parse(client.files['vizably.json'].content);
-  assert.equal(updatedManifest.summary.scanCount, 0);
-  assert.equal(updatedManifest.summary.lastScanAt, null);
+  assert.equal(updatedManifest.summary.scanCount, 1);
   assert.ok(updatedManifest.account.id);
 });
 
-test('deleteAllScans is idempotent when already empty', async () => {
+test('deleteScans clears lastScanAt when nothing is left', async () => {
+  const storageService = new StorageService();
+  const client = createMockGitHubClient({
+    files: {
+      'vizably.json': {
+        content: JSON.stringify(
+          manifest({ summary: { scanCount: 1, lastScanAt: '2026-07-11T12:00:00Z' } }),
+        ),
+        sha: 'sha-manifest',
+      },
+      'scans/index.json': {
+        content: JSON.stringify({ schemaVersion: 1, scans: [] }),
+        sha: 'sha-index',
+      },
+      'scans/a_a.example.json': {
+        content: JSON.stringify({
+          id: 'a',
+          url: 'https://a.example',
+          scannedAt: '2026-07-11T12:00:00Z',
+          result: { problems: {} },
+        }),
+        sha: 'sha-a',
+      },
+    },
+  });
+
+  const result = await storageService.deleteScans(
+    { storage: { ...STORAGE_REF, provider: 'github', branch: 'main' } },
+    ['a'],
+    { githubClient: client },
+  );
+
+  assert.equal(result.scanCount, 0);
+  const updatedManifest = JSON.parse(client.files['vizably.json'].content);
+  assert.equal(updatedManifest.summary.scanCount, 0);
+  assert.equal(updatedManifest.summary.lastScanAt, null);
+});
+
+test('deleteScans treats ids that are already gone as deleted', async () => {
   const storageService = new StorageService();
   const client = createMockGitHubClient({
     files: {
@@ -1454,8 +1500,9 @@ test('deleteAllScans is idempotent when already empty', async () => {
     },
   });
 
-  const result = await storageService.deleteAllScans(
+  const result = await storageService.deleteScans(
     { storage: { ...STORAGE_REF, provider: 'github', branch: 'main' } },
+    ['gone'],
     { githubClient: client },
   );
 
@@ -1463,16 +1510,32 @@ test('deleteAllScans is idempotent when already empty', async () => {
   assert.equal(result.scanCount, 0);
 });
 
-test('deleteAllScans stubs google until Phase 3', async () => {
+test('deleteScans stubs google until Phase 3', async () => {
   const storageService = new StorageService();
   await assert.rejects(
     () =>
-      storageService.deleteAllScans(
+      storageService.deleteScans(
         { storage: { provider: 'google', id: 'folder' } },
+        ['a'],
         {},
       ),
     (err) => err.code === 'PROVIDER_NOT_AVAILABLE' && err.status === 501,
   );
+});
+
+test('deleteScans requires a non-empty list of ids', async () => {
+  const storageService = new StorageService();
+  for (const ids of [undefined, [], [''], [1]]) {
+    await assert.rejects(
+      () =>
+        storageService.deleteScans(
+          { storage: { ...STORAGE_REF, provider: 'github' } },
+          ids,
+          { githubClient: {} },
+        ),
+      (err) => err.code === 'SCAN_IDS_REQUIRED' && err.status === 400,
+    );
+  }
 });
 
 test('deleteScanById returns not found for unknown id', async () => {

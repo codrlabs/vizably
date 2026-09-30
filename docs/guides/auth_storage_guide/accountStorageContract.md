@@ -194,12 +194,13 @@ summary) must be atomic or partial-write tolerant:
 ### Deleting a scan
 
 `DELETE /api/scans/:id` removes one immutable file `scans/<scanId>_<host>.json`
-and refreshes `scans/index.json` + `vizably.json` summary caches.
-
-`DELETE /api/scans` removes **all** immutable scan files under `scans/` (except
-`index.json`), then writes an empty index and `summary.scanCount: 0`. The
-account manifest identity and repository remain.
 and refreshes rebuildable caches (`scans/index.json` + manifest `summary`).
+
+`DELETE /api/scans` with body `{ "ids": [...] }` removes exactly those scan
+files in one commit and refreshes the same caches. It never deletes "everything
+in `scans/`" — a scan another device saved after the client loaded its list is
+not in `ids`, so it survives. Ids with no file are treated as already deleted.
+
 Other scan files and account identity stay. GitHub history may still contain
 the deleted blob unless history is rewritten — disclose that in the UI if you
 talk about permanence. See [`scanDeletion.md`](./scanDeletion.md).

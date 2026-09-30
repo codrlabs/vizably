@@ -31,7 +31,7 @@ class ScanController {
     this.getSavedScan = this.getSavedScan.bind(this);
     this.getSavedScans = this.getSavedScans.bind(this);
     this.deleteSavedScan = this.deleteSavedScan.bind(this);
-    this.deleteAllSavedScans = this.deleteAllSavedScans.bind(this);
+    this.deleteSavedScans = this.deleteSavedScans.bind(this);
     this.getProblem = this.getProblem.bind(this);
   }
 
@@ -176,10 +176,11 @@ class ScanController {
   }
 
   /**
-   * DELETE /api/scans — remove every saved report from attached storage.
-   * Keeps the account manifest and repository; only clears scan files + caches.
+   * DELETE /api/scans — remove the saved reports named in `{ ids }`.
+   * Only those ids are deleted, so scans saved from another device after the
+   * client loaded its list are kept. Keeps the account manifest and repository.
    */
-  async deleteAllSavedScans(req, res) {
+  async deleteSavedScans(req, res) {
     if (
       typeof req.isAuthenticated !== 'function' ||
       !req.isAuthenticated() ||
@@ -195,7 +196,11 @@ class ScanController {
       const clients = await this.authService.clientsFor(req.user, {
         storageRef: req.user.storage,
       });
-      const result = await this.storageService.deleteAllScans(req.user, clients);
+      const result = await this.storageService.deleteScans(
+        req.user,
+        req.body?.ids,
+        clients,
+      );
 
       if (!req.user.account) {
         req.user.account = {
@@ -212,6 +217,9 @@ class ScanController {
         scans: result.scans,
       });
     } catch (err) {
+      if (err.code === 'SCAN_IDS_REQUIRED') {
+        return res.status(400).json({ error: err.message });
+      }
       if (err.code === 'PROVIDER_NOT_AVAILABLE' || err.status === 501) {
         return res.status(501).json({
           error: err.message,
