@@ -222,6 +222,20 @@ export class ApiClient {
   }
 
   /**
+   * Delete the given saved scans in one storage write (keeps the account store).
+   * Pass the ids the user actually saw so scans saved elsewhere since are kept.
+   * @param {string[]} ids
+   * @returns {Promise<{ deletedCount: number, scanCount: number, scans: object[] }>}
+   */
+  deleteScans(ids) {
+    return this._request('/api/scans', {
+      method: 'DELETE',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ids }),
+    })
+  }
+
+  /**
    * Look up a single problem by id.
    * @param {string} id
    * @returns {Promise<Problem>}

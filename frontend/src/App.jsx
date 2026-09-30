@@ -310,15 +310,40 @@ function AppRoutes() {
   /** Remove one saved scan from attached storage and refresh the dashboard list. */
   const deleteSaved = async (s) => {
     if (!s?.id) return
-    const result = await apiClient.deleteScan(s.id)
-    setUser((prev) => mergeAccountUpdate(prev, {
-      scanCount: result.scanCount,
-      scans: result.scans,
-    }))
+    try {
+      const result = await apiClient.deleteScan(s.id)
+      setUser((prev) => mergeAccountUpdate(prev, {
+        scanCount: result.scanCount,
+        scans: result.scans,
+      }))
+    } catch (err) {
+      // Already gone (deleted on another device) — same outcome; resync the list.
+      if (err.status !== 404) throw err
+      await refreshUser().catch(() => {})
+    }
     if (location.search.includes(`scanId=${encodeURIComponent(s.id)}`)) {
       setScan(null)
       setProblem(null)
       navigate(PATHS.dashboard)
+    }
+  }
+
+  /**
+   * Remove the selected saved scans in one storage write. Only the ids the user
+   * saw are sent, so scans saved on another device since are never swept up.
+   */
+  const deleteManySaved = async (ids) => {
+    if (!ids?.length) return
+    try {
+      const result = await apiClient.deleteScans(ids)
+      setUser((prev) => mergeAccountUpdate(prev, {
+        scanCount: result.scanCount,
+        scans: result.scans,
+      }))
+    } catch (err) {
+      // Resync so the list (and any retry) reflects what is actually left.
+      await refreshUser().catch(() => {})
+      throw err
     }
   }
 
@@ -445,7 +470,7 @@ function AppRoutes() {
               <DashboardView
                 onNav={nav}
                 onOpen={openSaved}
-                onDelete={deleteSaved}
+                onDeleteMany={deleteManySaved}
                 saved={savedScans}
                 provider={provider}
                 user={shellUser}
