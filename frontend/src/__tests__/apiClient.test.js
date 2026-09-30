@@ -99,6 +99,33 @@ describe('ApiClient', () => {
     )
   })
 
+  it('discoverStorages calls GET /api/auth/storage/discover', async () => {
+    const fetchImpl = mockFetch({ provider: 'github', stores: [], source: 'list' })
+    const client = new ApiClient({ fetchImpl })
+
+    await client.discoverStorages('github')
+
+    expect(fetchImpl).toHaveBeenCalledWith(
+      '/api/auth/storage/discover?provider=github',
+      expect.any(Object),
+    )
+  })
+
+  it('createStorage omits name for the default store', async () => {
+    const fetchImpl = mockFetch({ provider: 'github', storageRef: { name: 'viz_scans' } })
+    const client = new ApiClient({ fetchImpl })
+
+    await client.createStorage()
+
+    expect(fetchImpl).toHaveBeenCalledWith(
+      '/api/auth/storage/create',
+      expect.objectContaining({
+        method: 'POST',
+        body: JSON.stringify({ provider: 'github' }),
+      }),
+    )
+  })
+
   it('validateStorage posts provider and storageRef', async () => {
     const fetchImpl = mockFetch({ status: 'loadable' })
     const client = new ApiClient({ fetchImpl })
