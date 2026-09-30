@@ -78,4 +78,12 @@ describe('AccountView', () => {
     fireEvent.click(screen.getByRole('button', { name: /export as json/i }))
     expect(await screen.findByRole('status')).toHaveTextContent('94 of 100 scans exported')
   })
+
+  it('confirms a full export too', async () => {
+    const onExport = vi.fn().mockResolvedValue({ total: 100, failed: 0 })
+    render(<AccountView onSignOut={vi.fn()} onExport={onExport} user={USER} provider="github" />)
+
+    fireEvent.click(screen.getByRole('button', { name: /export as json/i }))
+    expect(await screen.findByRole('status')).toHaveTextContent(/^100 of 100 scans exported\.$/)
+  })
 })

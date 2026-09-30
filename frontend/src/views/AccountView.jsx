@@ -20,9 +20,12 @@ export default function AccountView({ onSignOut, onExport, user, shellUser, prov
     setExporting(format)
     try {
       const summary = await onExport(format)
-      if (summary?.failed) {
+      if (summary) {
         const { total, failed } = summary
-        setExportNote(`${total - failed} of ${total} scans exported. ${failed} couldn't be loaded and ${failed === 1 ? 'is' : 'are'} listed in the file as errors.`)
+        setExportNote({
+          failed,
+          text: `${total - failed} of ${total} scans exported.${failed ? ` ${failed} couldn't be loaded and ${failed === 1 ? 'is' : 'are'} listed in the file as errors.` : ''}`,
+        })
       }
     } catch (err) {
       setExportError(err?.message || 'Could not export your data')
@@ -127,7 +130,7 @@ export default function AccountView({ onSignOut, onExport, user, shellUser, prov
               <p role="alert" style={{ fontSize: 'var(--text-sm)', color: 'var(--sev-critical-fg)', margin: '0 0 12px' }}>{exportError}</p>
             )}
             {exportNote && (
-              <p role="status" style={{ fontSize: 'var(--text-sm)', color: 'var(--sev-serious-fg)', margin: '0 0 12px' }}>{exportNote}</p>
+              <p role="status" style={{ fontSize: 'var(--text-sm)', color: exportNote.failed ? 'var(--sev-serious-fg)' : 'var(--text-muted)', margin: '0 0 12px' }}>{exportNote.text}</p>
             )}
           </div>
         </Section>
