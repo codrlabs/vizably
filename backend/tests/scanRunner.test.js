@@ -134,3 +134,36 @@ test('importing scanRunner does not pull in puppeteer', () => {
 
   assert.match(out, /NOT_LOADED/);
 });
+
+test('run emits one structured log line per scan (ok and error)', async (t) => {
+  const lines = [];
+  t.mock.method(console, 'log', (l) => lines.push(JSON.parse(l)));
+  t.mock.method(console, 'error', (l) => lines.push(JSON.parse(l)));
+
+  const ok = new ScanRunner({
+    puppeteer: createMockPuppeteer().puppeteer,
+    axe: { source: '' },
+    transform: () => ({ problems: { visualAccessibility: [{}, {}], multimedia: [{}] }, whatsGood: [] }),
+    validate: () => ({ ok: true }),
+  });
+  await ok.run('https://example.com');
+
+  const err = new Error('boom');
+  err.name = 'TimeoutError';
+  const bad = new ScanRunner({
+    puppeteer: createMockPuppeteer({ evaluateError: err }).puppeteer,
+    axe: { source: '' },
+    validate: () => ({ ok: true }),
+  });
+  await bad.run('https://example.com');
+
+  assert.equal(lines.length, 2);
+  assert.equal(lines[0].event, 'scan');
+  assert.equal(lines[0].outcome, 'ok');
+  assert.deepEqual(lines[0].violations, { visualAccessibility: 2, multimedia: 1 });
+  assert.equal(lines[0].totalViolations, 3);
+  assert.equal(typeof lines[0].durationMs, 'number');
+  assert.equal(lines[1].outcome, 'error');
+  assert.equal(lines[1].errorClass, 'TimeoutError');
+  assert.equal(lines[1].url, 'https://example.com');
+});
