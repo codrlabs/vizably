@@ -348,6 +348,7 @@ function AppRoutes() {
     const data = await buildAccountExport(user, (id) => apiClient.getSavedScan(id))
     if (format === 'pdf') await downloadPdf(data)
     else downloadJson(data)
+    return { total: data.scanCount, failed: data.scans.filter((s) => s.error).length }
   }
 
   const signOut = async () => {

@@ -22,6 +22,22 @@ describe('accountExport', () => {
     expect(data.scans[1]).toMatchObject({ id: 'b', error: 'gone' })
   })
 
+  it('fetches at most a few scans at a time and keeps index order', async () => {
+    const scans = Array.from({ length: 10 }, (_, i) => ({ id: `s${i}` }))
+    let inFlight = 0
+    let peak = 0
+    const getSavedScan = async (id) => {
+      peak = Math.max(peak, ++inFlight)
+      await new Promise((r) => setTimeout(r, 1))
+      inFlight--
+      return { id }
+    }
+    const data = await buildAccountExport({ account: { scans } }, getSavedScan)
+
+    expect(peak).toBeLessThanOrEqual(4)
+    expect(data.scans.map((s) => s.id)).toEqual(scans.map((s) => s.id))
+  })
+
   it('downloads a PDF containing the saved report', async () => {
     const save = vi.fn()
     const text = []

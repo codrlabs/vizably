@@ -11,13 +11,19 @@ export default function AccountView({ onSignOut, onExport, user, shellUser, prov
   const pv = PROVIDERS[provider] || PROVIDERS.github
   const [exporting, setExporting] = useState(null)
   const [exportError, setExportError] = useState(null)
+  const [exportNote, setExportNote] = useState(null)
 
   const handleExport = async (format) => {
     if (!onExport || exporting) return
     setExportError(null)
+    setExportNote(null)
     setExporting(format)
     try {
-      await onExport(format)
+      const summary = await onExport(format)
+      if (summary?.failed) {
+        const { total, failed } = summary
+        setExportNote(`${total - failed} of ${total} scans exported. ${failed} couldn't be loaded and ${failed === 1 ? 'is' : 'are'} listed in the file as errors.`)
+      }
     } catch (err) {
       setExportError(err?.message || 'Could not export your data')
     } finally {
@@ -119,6 +125,9 @@ export default function AccountView({ onSignOut, onExport, user, shellUser, prov
             </RowItem>
             {exportError && (
               <p role="alert" style={{ fontSize: 'var(--text-sm)', color: 'var(--sev-critical-fg)', margin: '0 0 12px' }}>{exportError}</p>
+            )}
+            {exportNote && (
+              <p role="status" style={{ fontSize: 'var(--text-sm)', color: 'var(--sev-serious-fg)', margin: '0 0 12px' }}>{exportNote}</p>
             )}
           </div>
         </Section>

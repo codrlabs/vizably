@@ -70,4 +70,12 @@ describe('AccountView', () => {
     expect(await screen.findByRole('alert')).toHaveTextContent('boom')
     expect(onExport).toHaveBeenLastCalledWith('pdf')
   })
+
+  it('tells the user when some scans could not be exported', async () => {
+    const onExport = vi.fn().mockResolvedValue({ total: 100, failed: 6 })
+    render(<AccountView onSignOut={vi.fn()} onExport={onExport} user={USER} provider="github" />)
+
+    fireEvent.click(screen.getByRole('button', { name: /export as json/i }))
+    expect(await screen.findByRole('status')).toHaveTextContent('94 of 100 scans exported')
+  })
 })

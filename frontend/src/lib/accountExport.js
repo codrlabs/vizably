@@ -9,16 +9,27 @@ const CATEGORY_LABELS = {
   multimedia: 'Multimedia',
 }
 
+// Each scan read costs several GitHub calls (fresh app token + contents), so
+// cap how many run at once to stay clear of the rate limit on big accounts.
+const EXPORT_CONCURRENCY = 4
+
 /**
  * @param {object} user session user (with `account.scans` index entries)
  * @param {(id: string) => Promise<object>} getSavedScan
  */
 export async function buildAccountExport(user, getSavedScan) {
   const entries = user?.account?.scans ?? []
-  // One failed scan file shouldn't sink the whole export — record it and move on.
-  const scans = await Promise.all(entries.map((entry) =>
-    getSavedScan(entry.id).catch((err) => ({ ...entry, error: err?.message || 'Could not load this scan' })),
-  ))
+  const scans = new Array(entries.length)
+  let next = 0
+  const worker = async () => {
+    while (next < entries.length) {
+      const i = next++
+      // One failed scan file shouldn't sink the whole export — record it and move on.
+      scans[i] = await getSavedScan(entries[i].id)
+        .catch((err) => ({ ...entries[i], error: err?.message || 'Could not load this scan' }))
+    }
+  }
+  await Promise.all(Array.from({ length: Math.min(EXPORT_CONCURRENCY, entries.length) }, worker))
   return {
     exportedAt: new Date().toISOString(),
     profile: {
