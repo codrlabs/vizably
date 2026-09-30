@@ -70,7 +70,7 @@ human-readable accessibility report. Two halves, one wire contract.
 
 vizably keeps **no database of its own**. A signed-in user's entire account
 (profile, settings, saved scans) lives in **storage they already own**: one
-**GitHub repository** or one **Google Drive folder**. GitHub/Google OAuth is used
+**GitHub repository**. GitHub/Google OAuth is used
 only to *identify* the user and get an API token; the user-owned store is the
 source of truth. This is what makes the product cheap to offer to everyone — no
 per-user hosting, no lock-in; the account is portable across devices.
@@ -78,9 +78,7 @@ per-user hosting, no lock-in; the account is portable across devices.
 The connection UX is **browse → select → validate → load-or-init**:
 
 1. User connects GitHub or Google (OAuth).
-2. They **see the repos/folders they already have** and **select one**
-   (GitHub: backend lists repos; Google: client-side **Google Picker**, because
-   `drive.file` cannot browse existing folders).
+2. They **see the repos/folders they already have** and **select one**.
 3. vizably runs a **fit-check** (`POST /api/auth/storage/validate`) — does this
    storage hold a valid vizably account store? → `loadable` / `initializable` /
    `unrelated` / `incompatible` / `invalid` (+ capabilities).
