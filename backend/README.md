@@ -214,8 +214,8 @@ See also [`docs/guides/auth_storage_guide/githubGoogleAuthStorageImplementation.
 | GET    | `/api/auth/github/callback` | GitHub OAuth callback                        |
 | GET    | `/api/auth/google`        | stub (501) until Phase 3                       |
 | GET    | `/api/auth/storages`      | list GitHub repos (`?provider=github`)         |
-| GET    | `/api/auth/storage/name-availability` | check repo name (`?name=&provider=github`) |
-| POST   | `/api/auth/storage/create` | create a private empty GitHub repo (UAT)     |
+| GET    | `/api/auth/storage/discover` | discover the account's Vizably store(s) (manifest-based, `?provider=github`) |
+| POST   | `/api/auth/storage/create` | create the account's GitHub repo (`viz_scans`, `viz_scans-2`, … unless `name` is given) |
 | POST   | `/api/auth/storage/validate` | fit-check selected storage                  |
 | POST   | `/api/auth/storage`       | load or init account storage                   |
 | GET    | `/api/auth/user`          | current user profile (no tokens)               |
