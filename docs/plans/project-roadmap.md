@@ -70,7 +70,7 @@ data and Deque University owns the long-form remediation content.
 - **Maintainer**: pick the lowest-numbered unchecked item in the
   current phase. One item = one branch = one PR. Branch names:
   `feat/*`, `fix/*`, `chore/*`, `docs/*`. Always branch from `main`.
-- **Intern contributors**: only pick items from the "🎓 Intern tasks"
+- **New contributors**: only pick items from the "🎓 Good first tasks"
   block at the end of each phase unless told otherwise. They are scoped
   to be self-contained and low-risk.
 - **Done means merged to `main` via PR**, not just pushed.
@@ -153,7 +153,7 @@ Goal: a clean repo that an outsider can read in 10 minutes.
 **Done when:** the cleanup PR is merged into `main` and
 `frontend/src/__tests__/` is the canonical test folder. ✅
 
-### 🎓 Intern tasks after Phase 0
+### 🎓 Good first tasks after Phase 0
 
 Pick any of these as a "good first issue". Each is a separate branch +
 PR.
@@ -167,9 +167,10 @@ PR.
       newline).
 - [ ] Add issue + PR templates under `.github/` (just markdown, no
       automation).
-- [ ] Audit `docs/guides/axecore-integration.md` and open issues for
-      any file path it references that doesn't exist yet (these are
-      Phase 1 deliverables — the intern just files the issues).
+- [x] ~~Audit `docs/guides/axecore-integration.md` and open issues for
+      any file path it references that doesn't exist yet~~ — moot: the
+      guide moved to [Scanning](https://open.codrlabs.com/vizably/scanning/)
+      on Codrlabs Open once Phase 2 shipped for real.
 - [ ] Proofread all of `docs/` and submit a single docs-polish PR
       (typos, broken links, dead anchors). Run links manually; do not
       add tooling.
@@ -191,7 +192,7 @@ before/after detail.
       returns `mockScanResults` — same response, just relocated. Bind
       handlers correctly (avoid the known `this`-binding bug
       documented in
-      [`axecore-integration.md`](../guides/axecore-integration.md)).
+      [Scanning](https://open.codrlabs.com/vizably/scanning/) on Codrlabs Open).
 - [x] Add `backend/services/axeTransformer.js` as a stub with a typed
       input → output contract derived from the axe shape above. Cover
       it with a unit test using a captured axe payload as a fixture.
@@ -209,7 +210,7 @@ before/after detail.
 matches the "target" section of
 [`axecore-integration-roadmap.md`](axecore-integration-roadmap.md). ✅
 
-### 🎓 Intern tasks after Phase 1
+### 🎓 Good first tasks after Phase 1
 
 - [ ] Write supertests for the existing endpoints (`POST /api/scan`,
       `GET /api/scan-results`, `GET /problems/:id`) asserting the
@@ -258,7 +259,7 @@ element(s) — for a real URL submitted from the landing page.
 `lib/scanAdapter.js`; the remaining unchecked items above are
 hardening, not blockers.
 
-### 🎓 Intern tasks after Phase 2
+### 🎓 Good first tasks after Phase 2
 
 - [ ] Build a tiny static "bad page" and "good page" in
       `backend/tests/fixtures/` and document how to point a manual
@@ -304,7 +305,7 @@ routes (`/results`, `/problem/:id`, `/story`, `/donate`, `/signin`,
 state, and land on a results page they can share by URL.
 **Status: met** for the core flow; remaining items are enhancements.
 
-### 🎓 Intern tasks after Phase 3
+### 🎓 Good first tasks after Phase 3
 
 - [ ] Add focus-visible styles and a "skip to main content" link on
       the landing page.
@@ -332,7 +333,7 @@ Goal: the scanner doesn't fall over on real-world sites.
 **Done when:** scanning the top 20 sites from a chosen list either
 returns results or returns a categorized error — never a 500.
 
-### 🎓 Intern tasks after Phase 4
+### 🎓 Good first tasks after Phase 4
 
 - [ ] Add a status badge to the README for the CI workflow.
 - [ ] Write `docs/guides/troubleshooting-scans.md` cataloguing each
@@ -388,7 +389,7 @@ Deliverables:
 they've scanned with date and headline counts, click one, and land on
 the same results screen they saw the first time.
 
-### 🎓 Intern tasks after Phase 5
+### 🎓 Good first tasks after Phase 5
 
 - [ ] Add a "Forgot password" stub screen (UI only, wire later).
 - [ ] Add a small "delete my account" flow under a settings page.
@@ -413,7 +414,7 @@ Goal: something we could put a domain in front of.
 **Done when:** the app is running on a real domain, scans are queued,
 and known abuse vectors (huge sites, scan floods) are bounded.
 
-### 🎓 Intern tasks after Phase 6
+### 🎓 Good first tasks after Phase 6
 
 - [ ] Add a "recent public scans" list on the landing page (read-only,
       from cache).
@@ -457,7 +458,7 @@ These don't belong to a single phase — pick them up opportunistically.
   never render once the page redirects) and the no-op "Download PDF
   Report" button from `ScanResults.jsx` (PDF is Phase 6); deleted the
   stale `landingPage.test.jsx` (case-mismatched import + assertions
-  against UI that no longer exists — replaced by the Phase 1 intern
+  against UI that no longer exists — replaced by the Phase 1 good first
   task to test `ScanResults.jsx`); trimmed dead mocks from
   `problemSolutionPage.test.jsx`; clarified that
   `frontend/src/data/mockScanResults.js` is a Vitest-only fixture

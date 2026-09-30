@@ -1017,8 +1017,8 @@ classDiagram
 - **Controllers know request/response**; they delegate everything
   else. They are classes so methods can be bound once in the
   constructor — `app.post('/api/scan', ctrl.postScan)` would lose
-  `this` otherwise. See [`axecore-integration.md`](../guides/axecore-integration.md)
-  for the bug pattern.
+  `this` otherwise. See [Scanning](https://open.codrlabs.com/vizably/scanning/)
+  on Codrlabs Open for the bug pattern.
 - **Services are the brain**: `ScanRunner` is the only thing that
   talks to Puppeteer + axe. `AxeTransformer` is a *pure module* —
   it takes a raw axe object in, returns a `ScanResult` out, has no

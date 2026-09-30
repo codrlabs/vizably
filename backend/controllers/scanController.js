@@ -6,8 +6,6 @@
  *
  * Methods are bound in the constructor so they can be passed directly
  * to `app.post('/api/scan', ctrl.postScan)` without losing `this`.
- * See docs/guides/axecore-integration.md for the bug pattern this
- * sidesteps.
  */
 class ScanController {
   /**

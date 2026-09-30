@@ -203,8 +203,6 @@ once, so keep a copy in the team password manager; an App can hold several keys,
 so a lost or leaked one is replaced by generating a new key and deleting the old,
 without touching the Client ID.
 
-See also [`docs/guides/auth_storage_guide/githubGoogleAuthStorageImplementation.md`](../docs/guides/auth_storage_guide/githubGoogleAuthStorageImplementation.md) § OAuth App Configuration.
-
 ## Endpoints
 
 | Method | Path                      | Notes                                          |
@@ -358,4 +356,4 @@ assumed:
 ## See also
 
 - [`docs/plans/architecture-map.md`](../docs/plans/architecture-map.md) §6 — code architecture
-- [`docs/guides/axecore-integration.md`](../docs/guides/axecore-integration.md) — `this`-binding bug pattern
+- [Scanning](https://open.codrlabs.com/vizably/scanning/) on Codrlabs Open — the axe-core pipeline and the `this`-binding bug pattern
