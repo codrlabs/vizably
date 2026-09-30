@@ -17,6 +17,7 @@ import LegalView from './views/LegalView'
 import NotFoundView from './views/NotFoundView'
 import ScanProgressIndicator from './components/ScanProgressIndicator'
 import { apiClient } from './lib/apiClient'
+import { buildAccountExport, downloadJson, downloadPdf } from './lib/accountExport'
 import { useScan } from './hooks/useScan'
 import { toScanViewModel } from './lib/scanAdapter'
 import {
@@ -342,6 +343,14 @@ function AppRoutes() {
     apiClient.githubLogin()
   }
 
+  /** "Download my data" — full saved reports pulled from storage, as a JSON or PDF file. */
+  const exportData = async (format) => {
+    const data = await buildAccountExport(user, (id) => apiClient.getSavedScan(id))
+    if (format === 'pdf') await downloadPdf(data)
+    else downloadJson(data)
+    return { total: data.scanCount, failed: data.scans.filter((s) => s.error).length }
+  }
+
   const signOut = async () => {
     try {
       await apiClient.logout()
@@ -460,6 +469,7 @@ function AppRoutes() {
             <RequireStorage>
               <AccountView
                 onSignOut={signOut}
+                onExport={exportData}
                 user={user}
                 shellUser={shellUser}
                 provider={provider}

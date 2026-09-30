@@ -7,8 +7,32 @@ import { PROVIDERS } from '../data/placeholders'
  * Account settings — profile + data/storage controls + delete account.
  * Deliberately framed around using LESS storage, not more.
  */
-export default function AccountView({ onSignOut, user, shellUser, provider }) {
+export default function AccountView({ onSignOut, onExport, user, shellUser, provider }) {
   const pv = PROVIDERS[provider] || PROVIDERS.github
+  const [exporting, setExporting] = useState(null)
+  const [exportError, setExportError] = useState(null)
+  const [exportNote, setExportNote] = useState(null)
+
+  const handleExport = async (format) => {
+    if (!onExport || exporting) return
+    setExportError(null)
+    setExportNote(null)
+    setExporting(format)
+    try {
+      const summary = await onExport(format)
+      if (summary) {
+        const { total, failed } = summary
+        setExportNote({
+          failed,
+          text: total === 0 ? 'No saved scans to export.' : `${total - failed} of ${total} scans exported.${failed ? ` ${failed} couldn't be loaded and ${failed === 1 ? 'is' : 'are'} listed in the file as errors.` : ''}`,
+        })
+      }
+    } catch (err) {
+      setExportError(err?.message || 'Could not export your data')
+    } finally {
+      setExporting(null)
+    }
+  }
   const [autoDelete, setAutoDelete] = useState(user?.account?.settings?.autoDelete90d ?? true)
   const [confirmDelete, setConfirmDelete] = useState(false)
 
@@ -93,9 +117,21 @@ export default function AccountView({ onSignOut, user, shellUser, provider }) {
               <Switch on={autoDelete} onToggle={() => setAutoDelete((v) => !v)} />
             </RowItem>
             <div style={{ borderTop: '1px solid var(--border-subtle)' }} />
-            <RowItem icon="Download" title="Download my data" sub="Export your account and saved reports as JSON.">
-              <Button variant="secondary" size="sm" disabled title="Export lands in a later phase">Export</Button>
+            <RowItem icon="Download" title="Download my data" sub="Export your account and saved reports as a JSON or PDF file.">
+              <div role="group" aria-label="Export format" style={{ display: 'flex', gap: 8 }}>
+                {['json', 'pdf'].map((format) => (
+                  <Button key={format} aria-label={`Export as ${format.toUpperCase()}`} variant="secondary" size="sm" disabled={!onExport || Boolean(exporting)} onClick={() => handleExport(format)}>
+                    {exporting === format ? 'Exporting…' : format.toUpperCase()}
+                  </Button>
+                ))}
+              </div>
             </RowItem>
+            {exportError && (
+              <p role="alert" style={{ fontSize: 'var(--text-sm)', color: 'var(--sev-critical-fg)', margin: '0 0 12px' }}>{exportError}</p>
+            )}
+            {exportNote && (
+              <p role="status" style={{ fontSize: 'var(--text-sm)', color: exportNote.failed ? 'var(--sev-serious-fg)' : 'var(--text-muted)', margin: '0 0 12px' }}>{exportNote.text}</p>
+            )}
           </div>
         </Section>
       </Card>
