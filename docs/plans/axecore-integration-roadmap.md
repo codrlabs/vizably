@@ -124,7 +124,7 @@ tests.
 ### Phase 4 — Productionization
 
 - [ ] Caching of scan results by URL (with TTL)
-- [ ] Rate limiting per IP
+- [x] Rate limiting per IP (#128)
 - [ ] Background job queue (e.g. BullMQ) for slow sites
 - [ ] Persistence (Postgres) for scan history
 - [ ] Authentication (JWT) for scan endpoints
