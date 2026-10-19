@@ -1,5 +1,6 @@
 /**
- * Rate limiting for POST /api/scan. Every scan launches a headless Chromium,
+ * Rate limiting for the live-scan routes (POST /api/scan and
+ * GET /api/scan-results). Every scan launches a headless Chromium,
  * so request volume is a cost and abuse surface, not just a fairness concern.
  *
  * Anonymous requests are limited per IP (IPv6 grouped by subnet, so rotating

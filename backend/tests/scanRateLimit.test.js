@@ -1,6 +1,6 @@
 /**
- * Rate limiting on POST /api/scan — per IP when anonymous, per user when
- * signed in.
+ * Rate limiting on the live-scan routes — per IP when anonymous, per user
+ * when signed in.
  */
 const test = require('node:test');
 const assert = require('node:assert/strict');
@@ -28,6 +28,23 @@ test('POST /api/scan returns 429 once an IP is over the limit, without scanning'
   assert.equal(blocked.body.code, 'RATE_LIMITED');
   assert.match(blocked.body.error, /too many scans/i);
   assert.ok(blocked.headers['retry-after']);
+  assert.equal(scans, 2);
+});
+
+test('GET /api/scan-results shares the same budget as POST /api/scan', async () => {
+  let scans = 0;
+  const run = async () => { scans += 1; return mockScanResults; };
+  const app = buildApp({
+    scanRunner: { run, getResults: run },
+    scanRateLimit: makeScanRateLimit({ anonLimit: 2 }),
+  });
+
+  assert.equal((await request(app).post('/api/scan').send({ url: 'https://example.com' })).status, 200);
+  assert.equal((await request(app).get('/api/scan-results').query({ url: 'https://example.com' })).status, 200);
+  const blocked = await request(app).get('/api/scan-results').query({ url: 'https://example.com' });
+
+  assert.equal(blocked.status, 429);
+  assert.equal(blocked.body.code, 'RATE_LIMITED');
   assert.equal(scans, 2);
 });
 
