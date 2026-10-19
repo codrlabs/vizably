@@ -57,6 +57,30 @@ function bucketFor(tags = []) {
 }
 
 /**
+ * Map one axe rule result (a violation or an incomplete check) to a Problem.
+ *
+ * @param {object} r  an entry of axe's `violations` or `incomplete`
+ * @param {string} category
+ * @returns {import('../../shared/types.js').Problem}
+ */
+function toProblem(r, category) {
+  return {
+    id: r.id,
+    name: r.help || r.description || r.id,
+    category,
+    rootCause: r.description || '',
+    codeSnippet: r.nodes?.[0]?.html || '',
+    solution: r.nodes?.[0]?.failureSummary
+      ? [r.nodes[0].failureSummary]
+      : [],
+    count: r.nodes?.length || 1,
+    impact: r.impact || null,
+    helpUrl: r.helpUrl || null,
+    tags: r.tags || [],
+  };
+}
+
+/**
  * Transform a raw axe-core run result into a ScanResult.
  *
  * NOTE: This is the *target* shape. Until the real scanner ships, the
@@ -75,6 +99,7 @@ function transform(axeResults) {
         multimedia: [],
       },
       whatsGood: [],
+      needsManualReview: [],
     };
   }
 
@@ -82,6 +107,11 @@ function transform(axeResults) {
     ? axeResults.violations
     : [];
   const passes = Array.isArray(axeResults.passes) ? axeResults.passes : [];
+  // Checks axe could not decide either way (e.g. contrast over a background
+  // image). Not violations: a person has to look at them.
+  const incomplete = Array.isArray(axeResults.incomplete)
+    ? axeResults.incomplete
+    : [];
 
   /** @type {ScanResult['problems']} */
   const problems = {
@@ -92,25 +122,13 @@ function transform(axeResults) {
 
   for (const v of violations) {
     const bucket = bucketFor(v.tags);
-    problems[bucket].push({
-      id: v.id,
-      name: v.help || v.description || v.id,
-      category: bucket,
-      rootCause: v.description || '',
-      codeSnippet: v.nodes?.[0]?.html || '',
-      solution: v.nodes?.[0]?.failureSummary
-        ? [v.nodes[0].failureSummary]
-        : [],
-      count: v.nodes?.length || 1,
-      impact: v.impact || null,
-      helpUrl: v.helpUrl || null,
-      tags: v.tags || [],
-    });
+    problems[bucket].push(toProblem(v, bucket));
   }
 
   return {
     problems,
     whatsGood: passes.map((p) => p.help || p.description || p.id),
+    needsManualReview: incomplete.map((i) => toProblem(i, 'needsManualReview')),
   };
 }
 
