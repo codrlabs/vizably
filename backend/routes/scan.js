@@ -1,6 +1,6 @@
 /**
  * Scan-related routes:
- *   - POST /api/scan
+ *   - POST /api/scan            (rate limited per IP / per user)
  *   - GET  /api/scan-results
  *   - GET  /api/scans
  *   - GET  /api/scans/:id
@@ -14,11 +14,12 @@ const { Router } = require('express');
 
 /**
  * @param {ScanController} controller
+ * @param {{ scanRateLimit?: import('express').RequestHandler[] }} [options]
  * @returns {import('express').Router}
  */
-function makeScanRouter(controller) {
+function makeScanRouter(controller, { scanRateLimit = [] } = {}) {
   const router = Router();
-  router.post('/scan', controller.postScan);
+  router.post('/scan', ...scanRateLimit, controller.postScan);
   router.get('/scan-results', controller.getScanResults);
   router.get('/scans', controller.getSavedScans);
   router.get('/scans/:id', controller.getSavedScan);

@@ -403,7 +403,7 @@ Goal: something we could put a domain in front of.
 
 - [ ] Cache scan results by URL (TTL, in-memory first, swap later) so
       anonymous re-scans of the same URL are cheap.
-- [ ] Per-IP rate limiting on `/api/scan`; per-user rate limiting on
+- [x] Per-IP rate limiting on `/api/scan`; per-user rate limiting on
       authenticated scans.
 - [ ] Background job queue (e.g. BullMQ) for slow sites; revisit
       sync vs async API decision.

@@ -221,7 +221,7 @@ See also [`docs/guides/auth_storage_guide/githubGoogleAuthStorageImplementation.
 | GET    | `/api/auth/user`          | current user profile (no tokens)               |
 | GET    | `/api/auth/status`        | `{ authenticated, user }`                      |
 | POST   | `/api/auth/logout`        | end session                                    |
-| POST   | `/api/scan`               | run a live Puppeteer + axe-core scan           |
+| POST   | `/api/scan`               | run a live Puppeteer + axe-core scan (rate limited: 10 / 15 min per IP, 30 per signed-in user; 429 `RATE_LIMITED`) |
 | GET    | `/api/scan-results?url=`  | re-run a scan for a URL (used by deep links)   |
 | GET    | `/api/scans`              | list saved scans from the user's store         |
 | GET    | `/api/scans/:id`          | load one saved report from the user's store    |

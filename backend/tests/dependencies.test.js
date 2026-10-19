@@ -28,3 +28,13 @@ test('@octokit/rest ships a CommonJS entry', () => {
       'import() before upgrading.',
   );
 });
+
+test('express-rate-limit ships a CommonJS entry', () => {
+  // Same Vercel constraint as @octokit/rest above: an ESM-only release would
+  // pass locally and 500 POST /api/scan in production.
+  const pkg = readInstalledPackageJson('express-rate-limit');
+  assert.ok(
+    Boolean(pkg.main) || Boolean(pkg.exports?.['.']?.require),
+    `express-rate-limit@${pkg.version} is ESM-only, which Vercel cannot require().`,
+  );
+});
