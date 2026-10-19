@@ -189,7 +189,7 @@ data source listed, that's a backend gap, not a frontend one.
 | Loading state      | "Fetching scan results…" spinner                                                          | render while `fetch` pending                                                                      |
 | Error state        | message + "Back to scan" button                                                           | thrown from `fetch` / missing `?url=`                                                             |
 | Problems — bucket grid | three cards-of-cards: `visualAccessibility`, `structureAndSemantics`, `multimedia`    | `GET /api/scan-results?url=...` → `problems.<bucket>` (today: mock; target: axe-driven)           |
-| Needs review bucket [planned, P3] | fourth bucket from axe `incomplete`                                            | same response, new key (depends on Option A/B/C)                                                  |
+| Needs manual review | fourth section from axe `incomplete`; unscored, not counted as issues            | same response, top-level `needsManualReview` (absent on older saved scans → treated as empty)     |
 | Severity badges [planned, P3] | "critical / serious / moderate / minor" chips on each card                       | axe `impact` per violation                                                                        |
 | WCAG tag filters [planned, P3] | toggleable chips ("wcag2a", "wcag21aa", …)                                      | axe `tags`                                                                                        |
 | What's Good        | list of passing checks                                                                    | response `whatsGood[]`                                                                            |
@@ -310,7 +310,7 @@ mindmap
     Edge cases
       results.problems.<bucket> missing → "No issues in this category"
       results.whatsGood missing → "No positives found"
-      *axe incomplete bucket [P3]*
+      *needs manual review (axe incomplete)*
       *backend timeout / DNS failure category [P4]*
     Side effects
       sets selectedProblem (lost on refresh today)
@@ -476,9 +476,9 @@ string, grouped so a non-technical user can understand it.
 - "What's Good" section — what the page got right.
 - Each problem renders as a card the user can click.
 - Loading and error states render in place of the grid.
-- **Planned (Phase 3):** a fourth bucket "Needs manual review" backed
-  by axe's `incomplete` array; severity badges driven by axe `impact`;
-  WCAG tag filters.
+- "Needs manual review" section, backed by axe's `incomplete` array
+  (`needsManualReview`): checks axe couldn't decide, never scored.
+- **Planned (Phase 3):** WCAG tag filters.
 
 **What the user can do.**
 - Read the buckets.
@@ -884,7 +884,7 @@ build step, no runtime cost.
  * @property {string}            timestamp  ISO 8601.
  * @property {BucketedProblems}  problems
  * @property {string[]}          whatsGood
- * @property {IncompleteCheck[]} [incomplete]   // P3
+ * @property {IncompleteCheck[]} [needsManualReview]   // axe `incomplete`
  * @property {Object}            [raw]          // full axe payload (Option C)
  *
  * @typedef {Object} ScanError

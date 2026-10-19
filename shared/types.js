@@ -45,6 +45,9 @@
  *   multimedia: Problem[]
  * }} problems
  * @property {string[]} whatsGood
+ * @property {Problem[]} [needsManualReview]  axe `incomplete`: checks axe
+ *   could not decide either way, for a person to verify. Not violations:
+ *   never scored or counted as issues. Absent on scans saved before it existed.
  */
 
 /**
