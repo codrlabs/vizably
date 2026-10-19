@@ -268,4 +268,21 @@ describe('ApiClient', () => {
     expect(result.scanCount).toBe(1)
     expect(result.scans).toEqual([{ id: 'scan-2' }])
   })
+
+  it('deletes the given saved scans by id', async () => {
+    const fetchImpl = vi.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: async () => ({ deletedCount: 2, scanCount: 0, scans: [] }),
+    })
+
+    const client = new ApiClient({ fetchImpl })
+    const result = await client.deleteScans(['a', 'b'])
+
+    expect(fetchImpl).toHaveBeenCalledWith(
+      '/api/scans',
+      expect.objectContaining({ method: 'DELETE', body: JSON.stringify({ ids: ['a', 'b'] }) }),
+    )
+    expect(result).toEqual({ deletedCount: 2, scanCount: 0, scans: [] })
+  })
 })

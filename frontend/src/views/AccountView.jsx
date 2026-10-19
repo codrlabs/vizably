@@ -83,11 +83,8 @@ export default function AccountView({ onSignOut, user, shellUser, provider }) {
       <Card style={{ marginBottom: 22 }}>
         <Section title="Data & storage" desc={`Your scans are saved in ${pv.store} — your space, not ours. Manage what’s kept here.`}>
           <div style={{ display: 'flex', flexDirection: 'column' }}>
-            <RowItem icon={pv.destIcon} title={`Saved scans · ${savedCount}`} sub={savedCount ? `Stored in ${pv.storeShort} (${storageLabel}).` : 'No saved scans — nothing is taking up space.'}>
-              <Button variant="secondary" size="sm" disabled title="Bulk delete lands in a later phase">
-                {savedCount ? 'Delete all' : 'Cleared'}
-              </Button>
-            </RowItem>
+            <RowItem icon={pv.destIcon} title={`Saved scans · ${savedCount}`} sub={savedCount ? `Stored in ${pv.storeShort} (${storageLabel}). Manage or delete them from your Dashboard.` : 'No saved scans — nothing is taking up space.'} />
+
             <div style={{ borderTop: '1px solid var(--border-subtle)' }} />
             <RowItem icon="Timer" title="Auto-delete old scans" sub={`Automatically remove scans older than 90 days from ${pv.storeShort}.`}>
               <Switch on={autoDelete} onToggle={() => setAutoDelete((v) => !v)} />
