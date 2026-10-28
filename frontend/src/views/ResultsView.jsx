@@ -145,6 +145,27 @@ export default function ResultsView({ data, onOpenProblem, scanId, onDelete }) {
         </section>
       ))}
 
+      {/* Needs manual review: axe couldn't decide these either way */}
+      {data.needsReview?.length > 0 && (
+        <section style={{ marginBottom: 26 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 4 }}>
+            <span style={{ color: 'var(--text-muted)' }}>{Ico('Hand', 18)}</span>
+            <h2 style={{ fontSize: 'var(--text-lg)', margin: 0 }}>Needs manual review</h2>
+            <span style={{ font: 'var(--font-label)', color: 'var(--text-muted)' }}>{data.needsReview.length}</span>
+          </div>
+          <p style={{ fontSize: 'var(--text-sm)', color: 'var(--text-muted)', margin: '0 0 10px', lineHeight: 1.5 }}>
+            The scanner couldn’t decide these automatically. They may be fine; check each one yourself. They don’t affect the score.
+          </p>
+          <Card padding="0" style={{ overflow: 'hidden' }}>
+            {data.needsReview.map((p, i) => (
+              <ProblemRow key={p.id} name={p.name} level={p.level} wcag={p.wcag} count={p.count}
+                onClick={() => onOpenProblem(p)}
+                style={i === data.needsReview.length - 1 ? { borderBottom: 'none' } : {}} />
+            ))}
+          </Card>
+        </section>
+      )}
+
       {/* What's good */}
       {data.whatsGood.length > 0 && (
         <section style={{ marginTop: 34 }}>

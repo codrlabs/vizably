@@ -83,5 +83,12 @@ export function toScanViewModel(result, url) {
     counts,
     categories,
     whatsGood: result?.whatsGood || [],
+    // Checks axe couldn't decide: listed for a person to verify, never scored
+    // or counted. Own ids, since one rule can also appear as a violation.
+    needsReview: (result?.needsManualReview || []).map((p) => ({
+      ...toProblemViewModel(p),
+      id: `${p.id}-review`,
+      needsReview: true,
+    })),
   }
 }

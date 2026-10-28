@@ -175,7 +175,7 @@ function ResultsFetcher({ url, onOpenProblem }) {
 function ProblemRoute({ scan, problem, onBack }) {
   const { id } = useParams()
   const resolved = problem
-    || scan?.categories.flatMap((c) => c.problems).find((p) => p.id === id)
+    || [...(scan?.categories.flatMap((c) => c.problems) ?? []), ...(scan?.needsReview ?? [])].find((p) => p.id === id)
   if (!resolved) return <Navigate to={PATHS.landing} replace />
   return <ProblemView problem={resolved} onBack={onBack} />
 }

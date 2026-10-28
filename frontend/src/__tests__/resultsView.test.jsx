@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest'
-import { render, screen, fireEvent, waitFor } from '@testing-library/react'
+import { render, screen, fireEvent, waitFor, within } from '@testing-library/react'
 import ResultsView from '../views/ResultsView'
 import { toScanViewModel } from '../lib/scanAdapter'
 import { scanResultFixture } from './fixtures/scanResult'
@@ -61,5 +61,21 @@ describe('ResultsView', () => {
 
     fireEvent.click(screen.getByRole('button', { name: /yes, delete/i }))
     await waitFor(() => expect(onDelete).toHaveBeenCalledWith({ id: 'scan-1' }))
+  })
+
+  it('renders the needs-manual-review section and opens its items', () => {
+    const onOpenProblem = vi.fn()
+    render(<ResultsView data={vm} onOpenProblem={onOpenProblem} />)
+
+    const section = screen.getByRole('heading', { name: 'Needs manual review' }).closest('section')
+    expect(section).toHaveTextContent(/don’t affect the score/)
+    fireEvent.click(within(section).getByText('Elements must meet minimum color contrast ratio thresholds'))
+    expect(onOpenProblem).toHaveBeenCalledWith(expect.objectContaining({ id: 'color-contrast-review', needsReview: true }))
+  })
+
+  it('hides the needs-manual-review section when there is nothing to review', () => {
+    const none = toScanViewModel({ ...scanResultFixture, needsManualReview: [] }, 'https://example.com')
+    render(<ResultsView data={none} onOpenProblem={() => {}} />)
+    expect(screen.queryByText('Needs manual review')).not.toBeInTheDocument()
   })
 })
