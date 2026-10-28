@@ -508,3 +508,20 @@ test('deleteSavedScan returns 404 for SCAN_NOT_FOUND', async () => {
   );
   assert.equal(out.statusCode, 404);
 });
+
+test('scan request logs keep origin + path only', async (t) => {
+  const logged = [];
+  t.mock.method(console, 'log', (...args) => logged.push(args.join(' ')));
+  const app = createTestApp();
+  const secretUrl = 'https://example.com/reset?token=s3cret';
+
+  await request(app).post('/api/scan').send({ url: secretUrl });
+  await request(app).get('/api/scan-results').query({ url: secretUrl });
+
+  const requestLines = logged.filter((l) => l.startsWith('Received'));
+  assert.equal(requestLines.length, 2);
+  for (const line of requestLines) {
+    assert.match(line, /https:\/\/example\.com\/reset$/);
+    assert.doesNotMatch(line, /s3cret/);
+  }
+});
