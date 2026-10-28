@@ -9,6 +9,8 @@
  * See docs/guides/axecore-integration.md for the bug pattern this
  * sidesteps.
  */
+const { safeUrl } = require('../services/redactUrl');
+
 class ScanController {
   /**
    * @param {object} deps
@@ -46,7 +48,7 @@ class ScanController {
          return res.status(400).json({ error: guard.reason });
        }
      }
-     console.log(`Received scan request for URL: ${url}`);
+     console.log(`Received scan request for URL: ${safeUrl(url)}`);
      try {
        const result = await this.scanRunner.run(url);
 
@@ -119,7 +121,7 @@ class ScanController {
          return res.status(400).json({ error: guard.reason });
        }
      }
-     console.log(`Received request for scan results of URL: ${url}`);
+     console.log(`Received request for scan results of URL: ${safeUrl(url)}`);
      try {
        const result = await this.scanRunner.getResults(url);
        if (result === null) {

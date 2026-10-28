@@ -165,5 +165,36 @@ test('run emits one structured log line per scan (ok and error)', async (t) => {
   assert.equal(typeof lines[0].durationMs, 'number');
   assert.equal(lines[1].outcome, 'error');
   assert.equal(lines[1].errorClass, 'TimeoutError');
-  assert.equal(lines[1].url, 'https://example.com');
+  assert.equal(lines[1].url, 'https://example.com/');
+});
+
+test('scan log keeps origin + path only, in the url and in error text', async (t) => {
+  const lines = [];
+  t.mock.method(console, 'log', (l) => lines.push(JSON.parse(l)));
+  t.mock.method(console, 'error', (l) => lines.push(JSON.parse(l)));
+  const secretUrl = 'https://user:pw@example.com/reset?token=s3cret#frag';
+
+  const ok = new ScanRunner({
+    puppeteer: createMockPuppeteer().puppeteer,
+    axe: { source: '' },
+    transform: () => ({ problems: {}, whatsGood: [] }),
+    validate: () => ({ ok: true }),
+  });
+  await ok.run(secretUrl);
+
+  // Puppeteer navigation errors quote the URL they failed on.
+  const navErr = new Error(`net::ERR_NAME_NOT_RESOLVED at ${secretUrl}`);
+  const bad = new ScanRunner({
+    puppeteer: createMockPuppeteer({ evaluateError: navErr }).puppeteer,
+    axe: { source: '' },
+    validate: () => ({ ok: true }),
+  });
+  await bad.run(secretUrl);
+
+  assert.equal(lines[0].url, 'https://example.com/reset');
+  assert.equal(lines[1].url, 'https://example.com/reset');
+  assert.equal(lines[1].error, 'net::ERR_NAME_NOT_RESOLVED at https://example.com/reset');
+  for (const line of lines) {
+    assert.doesNotMatch(JSON.stringify(line), /s3cret|frag|user:pw/);
+  }
 });
