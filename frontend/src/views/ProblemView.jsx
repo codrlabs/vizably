@@ -18,16 +18,26 @@ export default function ProblemView({ problem, onBack }) {
         )}
         <span style={{ fontSize: 'var(--text-sm)', color: 'var(--text-muted)' }}>{p.count} occurrence{p.count > 1 ? 's' : ''}</span>
       </div>
-      <h1 style={{ fontSize: 'var(--text-2xl)', letterSpacing: '-0.02em', margin: '0 0 28px', lineHeight: 1.15 }}>{p.name}</h1>
+      <h1 style={{ fontSize: 'var(--text-2xl)', letterSpacing: '-0.02em', margin: p.needsReview ? '0 0 14px' : '0 0 28px', lineHeight: 1.15 }}>{p.name}</h1>
+      {p.needsReview && (
+        <p role="note" style={{
+          display: 'flex', gap: 10, alignItems: 'flex-start', margin: '0 0 28px', padding: '12px 14px',
+          borderRadius: 'var(--radius-md)', background: 'var(--bg-inset)', color: 'var(--text-body)',
+          fontSize: 'var(--text-sm)', lineHeight: 1.5,
+        }}>
+          <span style={{ flexShrink: 0, color: 'var(--text-muted)' }}>{Ico('Hand', 16, 'currentColor')}</span>
+          <span>Needs manual review: the scanner couldn’t tell whether this passes or fails. It may be fine, so check it yourself before changing anything.</span>
+        </p>
+      )}
 
       <section style={{ marginBottom: 26 }}>
-        <h2 style={{ fontSize: 'var(--text-base)', textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--text-muted)', margin: '0 0 10px' }}>Root cause</h2>
+        <h2 style={{ fontSize: 'var(--text-base)', textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--text-muted)', margin: '0 0 10px' }}>{p.needsReview ? 'Why it couldn’t be checked' : 'Root cause'}</h2>
         <p style={{ font: 'var(--font-body)', fontSize: 'var(--text-md)', color: 'var(--text-body)', lineHeight: 1.65, margin: '0 0 16px' }}>{p.rootCause}</p>
-        {p.code && <CodeBlock caption="Offending code" language={p.lang} code={p.code} />}
+        {p.code && <CodeBlock caption={p.needsReview ? 'Element to check' : 'Offending code'} language={p.lang} code={p.code} />}
       </section>
 
       <section>
-        <h2 style={{ fontSize: 'var(--text-base)', textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--text-muted)', margin: '0 0 12px' }}>How to fix</h2>
+        <h2 style={{ fontSize: 'var(--text-base)', textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--text-muted)', margin: '0 0 12px' }}>{p.needsReview ? 'What to check' : 'How to fix'}</h2>
         <Card style={{ background: 'var(--accent-subtle)', borderColor: 'var(--blue-100)' }}>
           <ol style={{ margin: 0, padding: 0, listStyle: 'none', counterReset: 'fix', display: 'flex', flexDirection: 'column', gap: 14 }}>
             {p.solution.map((s, i) => (
@@ -39,7 +49,7 @@ export default function ProblemView({ problem, onBack }) {
           </ol>
         </Card>
         <div style={{ display: 'flex', gap: 10, marginTop: 22 }}>
-          <Button variant="primary" iconLeft={Ico('Check', 17, '#fff')}>Mark as fixed</Button>
+          <Button variant="primary" iconLeft={Ico('Check', 17, '#fff')}>{p.needsReview ? 'Mark as checked' : 'Mark as fixed'}</Button>
           {p.helpUrl && (
             <Button variant="secondary" iconLeft={Ico('ExternalLink', 16)}
               onClick={() => window.open(p.helpUrl, '_blank', 'noopener')}>

@@ -50,4 +50,20 @@ export const scanResultFixture = {
     'Page declares a language with lang="en" on <html>.',
     'All form inputs have associated <label> elements.',
   ],
+  // Same rule id as a violation above, as axe does when some nodes fail and
+  // others can't be decided.
+  needsManualReview: [
+    {
+      id: 'color-contrast',
+      name: 'Elements must meet minimum color contrast ratio thresholds',
+      category: 'needsManualReview',
+      rootCause: 'Text sits on a background image, so contrast could not be measured.',
+      codeSnippet: '<h1 class="hero-title">Welcome</h1>',
+      solution: ['Check the text stays readable over every part of the image.'],
+      count: 1,
+      impact: 'serious',
+      helpUrl: 'https://dequeuniversity.com/rules/axe/4.10/color-contrast',
+      tags: ['cat.color', 'wcag2aa', 'wcag143'],
+    },
+  ],
 }

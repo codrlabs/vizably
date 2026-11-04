@@ -80,6 +80,24 @@ const mockScanResults = {
     'Color is not used as the only way to convey information.',
     'Interactive elements are keyboard focusable and operable.',
   ],
+  needsManualReview: [
+    {
+      id: 'color-contrast',
+      name: 'Elements must meet minimum color contrast ratio thresholds',
+      category: 'needsManualReview',
+      rootCause:
+        'Text sits on a background image, so the contrast ratio could not be measured automatically.',
+      codeSnippet: '<h1 class="hero-title">Welcome</h1>',
+      solution: [
+        'Check by eye, or with a contrast picker, that the text stays readable over every part of the image.',
+        'If it does not, add a solid or semi-transparent backdrop behind the text.',
+      ],
+      count: 1,
+      impact: 'serious',
+      helpUrl: 'https://dequeuniversity.com/rules/axe/4.10/color-contrast',
+      tags: ['cat.color', 'wcag2aa', 'wcag143'],
+    },
+  ],
 };
 
 module.exports = mockScanResults;
