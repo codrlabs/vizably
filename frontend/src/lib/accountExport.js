@@ -64,7 +64,7 @@ export function downloadJson(data) {
 /**
  * Build the export as a real PDF file and download it. jsPDF is loaded on
  * demand so it stays out of the main bundle.
- * ponytail: jsPDF's built-in fonts are Latin-1 only — non-Latin scan text may
+ * Known Limitation: jsPDF's built-in fonts are Latin-1 only — non-Latin scan text may
  * render as garbage; embed a Unicode TTF via addFont if that shows up.
  */
 export async function downloadPdf(data) {
