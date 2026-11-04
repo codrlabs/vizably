@@ -89,6 +89,9 @@ export function toScanViewModel(result, url) {
       ...toProblemViewModel(p),
       id: `${p.id}-review`,
       needsReview: true,
+      // Neutral badge: axe's impact is how bad it would be *if* real, and this
+      // isn't confirmed.
+      level: 'review',
     })),
   }
 }

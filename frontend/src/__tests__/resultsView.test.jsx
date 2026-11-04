@@ -69,6 +69,8 @@ describe('ResultsView', () => {
 
     const section = screen.getByRole('heading', { name: 'Needs manual review' }).closest('section')
     expect(section).toHaveTextContent(/don’t affect the score/)
+    expect(within(section).getByRole('img', { name: 'Needs review' })).toBeInTheDocument()
+    expect(within(section).queryByText('Serious')).not.toBeInTheDocument()
     fireEvent.click(within(section).getByText('Elements must meet minimum color contrast ratio thresholds'))
     expect(onOpenProblem).toHaveBeenCalledWith(expect.objectContaining({ id: 'color-contrast-review', needsReview: true }))
   })

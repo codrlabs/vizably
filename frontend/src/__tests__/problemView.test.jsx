@@ -45,6 +45,8 @@ describe('ProblemView', () => {
 
     expect(screen.getByRole('note')).toHaveTextContent(/couldn’t tell whether this passes or fails/)
     expect(screen.getByText('What to check')).toBeInTheDocument()
+    expect(screen.getByRole('img', { name: 'Needs review' })).toBeInTheDocument()
+    expect(screen.queryByText('Serious')).not.toBeInTheDocument()
     expect(screen.queryByText('Root cause')).not.toBeInTheDocument()
     expect(screen.getByRole('button', { name: /mark as checked/i })).toBeInTheDocument()
   })

@@ -61,7 +61,7 @@ describe('toScanViewModel', () => {
 
   it('maps needsManualReview to needsReview with distinct ids, outside the score and counts', () => {
     expect(vm.needsReview).toHaveLength(1)
-    expect(vm.needsReview[0]).toMatchObject({ id: 'color-contrast-review', needsReview: true, level: 'serious', wcag: '1.4.3' })
+    expect(vm.needsReview[0]).toMatchObject({ id: 'color-contrast-review', needsReview: true, level: 'review', wcag: '1.4.3' })
     const withoutReview = toScanViewModel({ ...scanResultFixture, needsManualReview: undefined }, 'https://example.com')
     expect(vm.score).toBe(withoutReview.score)
     expect(vm.counts).toEqual(withoutReview.counts)
