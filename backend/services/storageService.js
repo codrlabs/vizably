@@ -1122,6 +1122,145 @@ class StorageService {
   }
 
   /**
+   * Delete the given saved scans in one commit and refresh index/manifest caches.
+   * Only the listed ids are touched — scans saved elsewhere since the caller
+   * loaded its list survive. Ids with no file are treated as already deleted.
+   * Leaves vizably.json identity and the repository itself intact.
+   * @param {object} account session user (with storage binding)
+   * @param {string[]} scanIds
+   * @param {StorageClients} clients
+   * @returns {Promise<{ deletedCount: number, scanCount: number, scans: object[] }>}
+   */
+  async deleteScans(account, scanIds, clients) {
+    if (account?.storage?.provider === 'google') {
+      const err = new Error(GOOGLE_NOT_AVAILABLE);
+      err.status = 501;
+      err.code = 'PROVIDER_NOT_AVAILABLE';
+      throw err;
+    }
+    if (!clients.githubClient) {
+      throw new Error('GitHub client is required to delete saved scans');
+    }
+    if (
+      !Array.isArray(scanIds) ||
+      scanIds.length === 0 ||
+      !scanIds.every((id) => typeof id === 'string' && id)
+    ) {
+      const err = new Error('Scan ids are required');
+      err.status = 400;
+      err.code = 'SCAN_IDS_REQUIRED';
+      throw err;
+    }
+
+    const maxAttempts = 3;
+    for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
+      try {
+        return await this._deleteScansOnce(account, new Set(scanIds), clients);
+      } catch (err) {
+        const canRetry = this._isRefConflict(err) && attempt < maxAttempts - 1;
+        if (!canRetry) {
+          throw err;
+        }
+      }
+    }
+
+    throw new Error('GitHub write failed after retries');
+  }
+
+  /**
+   * @param {object} account
+   * @param {Set<string>} ids
+   * @param {StorageClients} clients
+   * @private
+   */
+  async _deleteScansOnce(account, ids, clients) {
+    const storageRef = account.storageRef ?? account.storage;
+    const { owner, repo } = this._parseGitHubRef(storageRef);
+    const octokit = clients.githubClient;
+    const branch = await this._resolveGitHubBranch(
+      octokit,
+      owner,
+      repo,
+      storageRef.branch,
+    );
+
+    const scanEntries = await this._listGitHubDirectory(
+      octokit,
+      owner,
+      repo,
+      SCANS_DIR,
+      branch,
+    );
+    const idOf = (name) => name.slice(0, name.indexOf('_'));
+    const scanFiles = scanEntries.filter(
+      (entry) =>
+        entry.type === 'file' &&
+        entry.name.endsWith('.json') &&
+        entry.name !== 'index.json' &&
+        ids.has(idOf(entry.name)),
+    );
+
+    const { index } = await this._reconcileGitHubIndex(octokit, owner, repo, branch);
+    index.scans = index.scans.filter((entry) => !ids.has(entry.id));
+
+    // Nothing left to remove (already deleted elsewhere) — report current state.
+    if (scanFiles.length === 0) {
+      return { deletedCount: 0, scanCount: index.scans.length, scans: index.scans };
+    }
+
+    const manifestFile = await this._readAccountManifest(octokit, owner, repo, branch);
+    if (!manifestFile) {
+      throw new Error('Account manifest not found');
+    }
+
+    const { manifest } = this._normalizeManifestBrand(
+      this._parseJson(manifestFile.content, 'manifest'),
+    );
+    const updatedManifest = this._updateManifestSummary(
+      manifest,
+      index,
+      index.scans[0]?.scannedAt,
+    );
+    if (index.scans.length === 0) {
+      updatedManifest.summary.lastScanAt = null;
+    }
+    updatedManifest.account.updatedAt = new Date().toISOString();
+
+    const indexFile = await this._readGitHubFile(octokit, owner, repo, INDEX_PATH, branch);
+
+    await this._writeGitHubFiles(
+      octokit,
+      owner,
+      repo,
+      branch,
+      [
+        ...scanFiles.map((entry) => ({
+          path: `${SCANS_DIR}/${entry.name}`,
+          delete: true,
+          sha: entry.sha,
+        })),
+        {
+          path: INDEX_PATH,
+          content: JSON.stringify(index, null, 2) + '\n',
+          sha: indexFile?.sha,
+        },
+        {
+          path: MANIFEST_PATH,
+          content: JSON.stringify(updatedManifest, null, 2) + '\n',
+          ...(manifestFile.path === MANIFEST_PATH ? { sha: manifestFile.sha } : {}),
+        },
+      ],
+      `Delete accessibility scans (${scanFiles.length})`,
+    );
+
+    return {
+      deletedCount: scanFiles.length,
+      scanCount: index.scans.length,
+      scans: index.scans,
+    };
+  }
+
+  /**
    * One save attempt: reconcile from scan-file truth, append prepared scan, write.
    * @param {object} account
    * @param {object} prepared from `_prepareScanWrite`
