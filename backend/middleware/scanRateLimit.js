@@ -8,9 +8,10 @@
  * are limited per user instead — people sharing an office or campus IP each
  * get their own budget.
  *
- * ponytail: in-memory store, so on Vercel each warm instance counts on its own
- * and a cold start resets it. Move to a shared store (e.g. Redis/Upstash via
- * express-rate-limit's `store` option) if abuse gets past per-instance limits.
+ * Known Limits: counts are kept in memory, so on Vercel each running
+ * instance counts separately and a cold start resets its counts. If abuse gets
+ * past that, move to a shared store (e.g. Redis/Upstash) through
+ * express-rate-limit's `store` option.
  */
 const { rateLimit } = require('express-rate-limit');
 
