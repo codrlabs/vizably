@@ -101,6 +101,7 @@ export default function AppShell({ children, route, onNav, authed, user, theme, 
             <FootCol title="Support">
               <FootLink to="donate" icon="Coffee" accent>Buy me a coffee</FootLink>
               <FootLink href={REPO} icon="Github">GitHub</FootLink>
+              <FootLink to="feedback">Feedback</FootLink>
             </FootCol>
             <FootCol title="Legal">
               <FootLink to="privacy">Privacy</FootLink>
