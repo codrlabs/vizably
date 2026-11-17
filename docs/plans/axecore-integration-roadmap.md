@@ -116,8 +116,8 @@ tests.
       (react-router v7; design-system frontend.)
 - [x] Loading + progress UI on the scan page — the landing spinner
       now runs for the real `POST /api/scan` duration.
-- [x] Surface axe-core `incomplete` results as a "needs manual review"
-      bucket (top-level `needsManualReview` in `ScanResult`; unscored; #124.)
+- [ ] Surface axe-core `incomplete` results as a "needs manual review"
+      bucket
 - [x] Link each problem to its `helpUrl` ("WCAG reference" button in
       `views/ProblemView.jsx`.)
 

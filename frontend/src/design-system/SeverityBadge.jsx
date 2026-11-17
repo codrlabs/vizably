@@ -4,9 +4,7 @@
  * distinct glyph + text label so the meaning never depends on color
  * alone (WCAG 1.4.1 Use of Color).
  *
- * level: 'critical' | 'serious' | 'moderate' | 'minor' | 'review'
- * 'review' is not a severity: it marks a check the scanner couldn't decide,
- * so it stays neutral rather than implying a confirmed problem.
+ * level: 'critical' | 'serious' | 'moderate' | 'minor'
  */
 export default function SeverityBadge({ level = 'moderate', variant = 'soft', showLabel = true, size = 'md', style = {} }) {
   const map = {
@@ -14,7 +12,6 @@ export default function SeverityBadge({ level = 'moderate', variant = 'soft', sh
     serious: { label: 'Serious', glyph: '▲', fg: 'var(--sev-serious-fg)', solid: 'var(--sev-serious)', bg: 'var(--sev-serious-bg)' },
     moderate: { label: 'Moderate', glyph: '◆', fg: 'var(--sev-moderate-fg)', solid: 'var(--sev-moderate)', bg: 'var(--sev-moderate-bg)' },
     minor: { label: 'Minor', glyph: '■', fg: 'var(--sev-minor-fg)', solid: 'var(--sev-minor)', bg: 'var(--sev-minor-bg)' },
-    review: { label: 'Needs review', glyph: '?', fg: 'var(--text-body)', solid: 'var(--text-body)', bg: 'var(--bg-inset)' },
   }
   const s = map[level] || map.moderate
   const dims = size === 'sm'
@@ -24,7 +21,7 @@ export default function SeverityBadge({ level = 'moderate', variant = 'soft', sh
   return (
     <span
       role="img"
-      aria-label={level === 'review' ? s.label : `${s.label} severity`}
+      aria-label={`${s.label} severity`}
       style={{
         display: 'inline-flex', alignItems: 'center', gap: 6, padding: dims.pad,
         background: solid ? s.solid : s.bg,
