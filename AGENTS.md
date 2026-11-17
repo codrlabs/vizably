@@ -70,19 +70,26 @@ human-readable accessibility report. Two halves, one wire contract.
 
 vizably keeps **no database of its own**. A signed-in user's entire account
 (profile, settings, saved scans) lives in **storage they already own**: one
-**GitHub repository**. GitHub/Google OAuth is used
-only to *identify* the user and get an API token; the user-owned store is the
-source of truth. This is what makes the product cheap to offer to everyone — no
+**GitHub repository**. GitHub sign-in is used only to *identify* the user; repo
+access comes from the Vizably GitHub App. The user-owned store is the source of
+truth. This is what makes the product cheap to offer to everyone — no
 per-user hosting, no lock-in; the account is portable across devices.
 
-The connection UX is **browse → select → validate → load-or-init**:
+The connection UX is **sign in → find or create the store → load-or-init**:
 
-1. User connects GitHub or Google (OAuth).
-2. They **see the repos/folders they already have** and **select one**.
-3. vizably runs a **fit-check** (`POST /api/auth/storage/validate`) — does this
-   storage hold a valid vizably account store? → `loadable` / `initializable` /
-   `unrelated` / `incompatible` / `invalid` (+ capabilities).
-4. vizably **loads** the existing account back, or **initializes** the store.
+1. User signs in with GitHub.
+2. vizably **finds the existing store** (`GET /api/auth/storage/discover`): the
+   store saved in the session, then a repo named `viz_scans`, then the user's
+   repo list. A repo counts as a store only if it has a `vizably.json` manifest,
+   never because of its name.
+3. **No store found** → vizably **creates one** (`POST /api/auth/storage/create`):
+   `viz_scans`, or `viz_scans-2`, `viz_scans-3`, … if the name is taken. The user
+   never names or picks a repo.
+4. **One store** → it is used directly. **More than one** → only then is a
+   picker shown.
+5. vizably runs a **fit-check** on the store (`loadable` / `initializable` /
+   `unrelated` / `incompatible` / `invalid` + capabilities), then **loads** the
+   existing account or **initializes** the store (`POST /api/auth/storage`).
 
 On-disk contract (the "data needed to load back the account"): a root
 `vizably.json` manifest + a `scans/` folder (`index.json` cache + one immutable
@@ -102,15 +109,15 @@ sync with the code:
 Non-negotiables for this subsystem:
 
 - **No tokens/secrets in the store.** OAuth tokens are encrypted at rest in the
-  session (AES-256-GCM), never written to the repo/folder.
+  session (AES-256-GCM), never written to the repo.
 - **Possession-based identity by default** — whoever can read/write the store can
   load the account; treat the storage ACL as the account ACL. Record stable
-  provider ids (repo node id / Drive folder id / owner id), not names.
+  provider ids (repo node id / owner id), not names.
 - **Concurrency & partial writes are expected** — multiple devices and
   collaborators touch the store. Scan files are immutable; caches reconcile on
-  load; GitHub writes use blob `sha`, Drive writes use generation/ETag.
-- **Scope tradeoffs are real and must be disclosed in the UI**, not just docs
-  (GitHub OAuth `repo` is all-or-nothing; Google browsing needs Picker or
-  `drive.metadata.readonly`).
+  load; GitHub writes use the blob `sha` for optimistic concurrency.
+- **Access tradeoffs are real and must be disclosed in the UI**, not just docs
+  (sign-in asks only for `read:user`; repo access comes from the Vizably GitHub
+  App installation, which the user can limit to the one store repo).
 - This **supersedes** the Postgres + JWT sketch in the Phase 5 roadmap — there is
   no project DB.
