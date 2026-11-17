@@ -225,4 +225,34 @@ describe('DashboardView', () => {
     fireEvent.click(screen.getByRole('button', { name: /yes, delete/i }))
     await waitFor(() => expect(onDeleteMany).toHaveBeenCalledWith(['s1']))
   })
+
+  it('keeps focus on a row checkbox after toggling it', () => {
+    render(
+      <DashboardView
+        onNav={vi.fn()}
+        onOpen={vi.fn()}
+        onDelete={vi.fn()}
+        onDeleteMany={vi.fn()}
+        saved={SAVED}
+        provider="github"
+        user={{ email: 'sam@example.com' }}
+      />,
+    )
+
+    const box = screen.getByLabelText(/select scan example.com/i)
+    box.focus()
+    fireEvent.click(box)
+
+    // Same element, not a remounted copy, so keyboard and screen reader users
+    // stay where they were.
+    const after = screen.getByLabelText(/select scan example.com/i)
+    expect(after).toBe(box)
+    expect(after).toBeChecked()
+    expect(document.activeElement).toBe(box)
+
+    fireEvent.click(box)
+    expect(screen.getByLabelText(/select scan example.com/i)).toBe(box)
+    expect(box).not.toBeChecked()
+    expect(document.activeElement).toBe(box)
+  })
 })
