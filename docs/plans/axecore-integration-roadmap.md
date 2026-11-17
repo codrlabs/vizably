@@ -116,15 +116,15 @@ tests.
       (react-router v7; design-system frontend.)
 - [x] Loading + progress UI on the scan page — the landing spinner
       now runs for the real `POST /api/scan` duration.
-- [ ] Surface axe-core `incomplete` results as a "needs manual review"
-      bucket
+- [x] Surface axe-core `incomplete` results as a "needs manual review"
+      bucket (top-level `needsManualReview` in `ScanResult`; unscored; #124.)
 - [x] Link each problem to its `helpUrl` ("WCAG reference" button in
       `views/ProblemView.jsx`.)
 
 ### Phase 4 — Productionization
 
 - [ ] Caching of scan results by URL (with TTL)
-- [ ] Rate limiting per IP
+- [x] Rate limiting per IP (#128)
 - [ ] Background job queue (e.g. BullMQ) for slow sites
 - [ ] Persistence (Postgres) for scan history
 - [ ] Authentication (JWT) for scan endpoints

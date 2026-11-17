@@ -12,14 +12,15 @@ const makeAuthRouter = require('./auth');
  *   scanController: import('../controllers/scanController'),
  *   authService: import('../services/authService'),
  *   storageService: import('../services/storageService'),
+ *   scanRateLimit?: import('express').RequestHandler[],
  * }} deps
  */
-function mountRoutes(app, { scanController, authService, storageService }) {
+function mountRoutes(app, { scanController, authService, storageService, scanRateLimit }) {
   // Session + passport once for all API routes (scan needs req.user too).
   app.use(...authService.middleware());
 
   app.use('/api/auth', makeAuthRouter({ authService, storageService }));
-  app.use('/api', makeScanRouter(scanController));
+  app.use('/api', makeScanRouter(scanController, { scanRateLimit }));
   app.use('/api/problems', makeProblemsRouter(scanController));
 }
 

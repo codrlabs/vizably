@@ -16,6 +16,7 @@ const mockScanResults = require('./data/mockScanResults');
 const ScanRunner = require('./services/scanRunner');
 const AuthService = require('./services/authService');
 const StorageService = require('./services/storageService');
+const makeScanRateLimit = require('./middleware/scanRateLimit');
 
 const scanRunner = new ScanRunner();
 
@@ -59,7 +60,10 @@ function buildApp(overrides = {}) {
       storageService,
     });
 
-  mountRoutes(app, { scanController, authService, storageService });
+  // Built per app so each instance (and each test app) starts with fresh counts.
+  const scanRateLimit = overrides.scanRateLimit || makeScanRateLimit();
+
+  mountRoutes(app, { scanController, authService, storageService, scanRateLimit });
 
   return app;
 }

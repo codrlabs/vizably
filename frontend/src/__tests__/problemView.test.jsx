@@ -39,4 +39,15 @@ describe('ProblemView', () => {
     fireEvent.click(screen.getByText('Back to results'))
     expect(onBack).toHaveBeenCalled()
   })
+
+  it('frames a needs-review item as something to check, not a failure', () => {
+    render(<ProblemView problem={vm.needsReview[0]} onBack={() => {}} />)
+
+    expect(screen.getByRole('note')).toHaveTextContent(/couldn’t tell whether this passes or fails/)
+    expect(screen.getByText('What to check')).toBeInTheDocument()
+    expect(screen.getByRole('img', { name: 'Needs review' })).toBeInTheDocument()
+    expect(screen.queryByText('Serious')).not.toBeInTheDocument()
+    expect(screen.queryByText('Root cause')).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /mark as checked/i })).toBeInTheDocument()
+  })
 })

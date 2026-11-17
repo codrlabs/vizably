@@ -17,6 +17,7 @@ const fs = require('node:fs');
 
 const defaultValidate = require('./ssrfGuard').validate;
 const { transform: defaultTransform } = require('./axeTransformer');
+const { safeUrl, scrubUrls } = require('./redactUrl');
 const defaultAxe = require('axe-core');
 
 /**
@@ -75,7 +76,12 @@ async function resolveBrowser(injected) {
  * shipped to an aggregator as-is.
  */
 function logScan(fields) {
-  const line = JSON.stringify({ event: 'scan', ...fields });
+  const line = JSON.stringify({
+    event: 'scan',
+    ...fields,
+    url: safeUrl(fields.url),
+    ...(fields.error !== undefined && { error: scrubUrls(fields.error) }),
+  });
   if (fields.outcome === 'ok') console.log(line);
   else console.error(line);
 }
