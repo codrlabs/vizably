@@ -2,8 +2,8 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen, fireEvent, waitFor, act } from '@testing-library/react'
 
 // The whole app, wired the way it runs, with only the network mocked. This is
-// what catches a prop App.jsx forgets to pass: the view tests render
-// DashboardView directly and hand it every prop.
+// what catches a prop App.jsx forgets to pass, or a page that gets remounted:
+// the view tests render DashboardView directly and hand it every prop.
 const { apiClient } = vi.hoisted(() => ({
   apiClient: {
     getAuthStatus: vi.fn(),
@@ -69,5 +69,50 @@ describe('App dashboard', () => {
     fireEvent.click(screen.getByRole('button', { name: /yes, delete/i }))
 
     await waitFor(() => expect(apiClient.deleteScans).toHaveBeenCalledWith(['s1', 's2']))
+  })
+
+  it('keeps the selection and focus when the scan list refreshes', async () => {
+    let finishRefresh
+    apiClient.listScans
+      .mockResolvedValueOnce({ scanCount: 2, scans: SCANS }) // sign-in load
+      .mockImplementationOnce(() => new Promise((resolve) => { // refresh on opening the dashboard
+        finishRefresh = () => resolve({ scanCount: 2, scans: SCANS })
+      }))
+    render(<App />)
+
+    const box = await screen.findByLabelText(/select scan example.com/i)
+    box.focus()
+    fireEvent.click(box)
+    await waitFor(() => expect(finishRefresh).toBeDefined())
+    await act(async () => finishRefresh())
+
+    expect(screen.getByLabelText(/select scan example.com/i)).toBe(box)
+    expect(box).toBeChecked()
+    expect(document.activeElement).toBe(box)
+  })
+
+  it('shows the error when a bulk delete fails, after resyncing the list', async () => {
+    apiClient.deleteScans.mockRejectedValue(new Error('GitHub refused the delete'))
+    await openDashboard()
+
+    fireEvent.click(screen.getByLabelText(/^select all scans$/i))
+    fireEvent.click(screen.getByRole('button', { name: /delete 2 selected/i }))
+    fireEvent.click(screen.getByRole('button', { name: /yes, delete/i }))
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(/refused the delete/i)
+    expect(apiClient.listScans).toHaveBeenCalledTimes(3)
+  })
+
+  it('still guards the account page: signed in shows it, signed out goes to sign in', async () => {
+    window.history.pushState({}, '', '/account')
+    const { unmount } = render(<App />)
+    expect(await screen.findByRole('heading', { name: 'Settings' })).toBeInTheDocument()
+    unmount()
+
+    apiClient.getAuthStatus.mockResolvedValue({ authenticated: false })
+    window.history.pushState({}, '', '/dashboard')
+    render(<App />)
+    expect(await screen.findByRole('heading', { name: /connect to save your scans/i })).toBeInTheDocument()
+    expect(window.location.pathname).toBe('/signin')
   })
 })

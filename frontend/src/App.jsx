@@ -440,11 +440,14 @@ function AppRoutes() {
     )
   }
 
-  function RequireStorage({ children }) {
+  // A plain function, not a component: a component declared inside AppRoutes
+  // is a new type on every render, so each user refresh would remount the whole
+  // page and wipe its state (selection, focus, error messages).
+  const requireStorage = (page) => {
     if (authLoading) return <AuthLoadingIndicator />
     if (!authed) return <Navigate to={PATHS.signin} replace />
     if (!storageReady) return <Navigate to={PATHS.connect} replace />
-    return children
+    return page
   }
 
   if (authLoading && (route === 'dashboard' || route === 'account' || route === 'connect')) {
@@ -474,33 +477,29 @@ function AppRoutes() {
         <Route path={PATHS.connect} element={<ConnectRoute />} />
         <Route
           path={PATHS.dashboard}
-          element={(
-            <RequireStorage>
-              <DashboardView
-                onNav={nav}
-                onOpen={openSaved}
-                onDelete={deleteSaved}
-                onDeleteMany={deleteManySaved}
-                saved={savedScans}
-                provider={provider}
-                user={shellUser}
-                storage={user?.storage}
-              />
-            </RequireStorage>
+          element={requireStorage(
+            <DashboardView
+              onNav={nav}
+              onOpen={openSaved}
+              onDelete={deleteSaved}
+              onDeleteMany={deleteManySaved}
+              saved={savedScans}
+              provider={provider}
+              user={shellUser}
+              storage={user?.storage}
+            />,
           )}
         />
         <Route
           path={PATHS.account}
-          element={(
-            <RequireStorage>
-              <AccountView
-                onSignOut={signOut}
-                onExport={exportData}
-                user={user}
-                shellUser={shellUser}
-                provider={provider}
-              />
-            </RequireStorage>
+          element={requireStorage(
+            <AccountView
+              onSignOut={signOut}
+              onExport={exportData}
+              user={user}
+              shellUser={shellUser}
+              provider={provider}
+            />,
           )}
         />
         <Route path={PATHS.privacy} element={<LegalView doc="privacy" onNav={nav} />} />
