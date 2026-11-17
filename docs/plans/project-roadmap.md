@@ -292,8 +292,9 @@ routes (`/results`, `/problem/:id`, `/story`, `/donate`, `/signin`,
       label, never color-only).
 - [x] Results page shareable by URL — `/results?url=…` re-runs the
       fetch on refresh / deep link.
-- [ ] Surface axe-core `incomplete` results as a "Needs manual
-      review" bucket.
+- [x] Surface axe-core `incomplete` results as a "Needs manual
+      review" bucket. (Top-level `needsManualReview` in `ScanResult`,
+      not inside `problems`, so it is never scored or counted; #124.)
 - [ ] Sort violations by `impact` (`critical` → `serious` →
       `moderate` → `minor`); allow filtering by WCAG `tags`
       (`wcag2a`, `wcag2aa`, `best-practice`).
@@ -309,8 +310,8 @@ state, and land on a results page they can share by URL.
 - [ ] Add focus-visible styles and a "skip to main content" link on
       the landing page.
 - [ ] Add basic `<title>` and `<meta name="description">` per route.
-- [ ] Write a Vitest test asserting the "Needs manual review" bucket
-      renders when the fixture contains `incomplete` items.
+- [x] Write a Vitest test asserting the "Needs manual review" bucket
+      renders when the fixture contains `incomplete` items. (#124.)
 - [ ] Add a small "About / How this works" page reachable from the
       landing page.
 
