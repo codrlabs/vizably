@@ -14,6 +14,7 @@ describe('FeedbackView', () => {
     expect(screen.getByLabelText(/feedback type/i)).toBeInTheDocument()
     expect(screen.getByLabelText(/your message/i)).toBeInTheDocument()
     expect(screen.getByLabelText(/scanned website url/i)).toBeInTheDocument()
+
     expect(
       screen.getByRole('button', { name: /submit feedback/i }),
     ).toBeInTheDocument()
@@ -33,6 +34,7 @@ describe('FeedbackView', () => {
     expect(screen.getByRole('alert')).toHaveTextContent(
       /please enter your feedback message/i,
     )
+
     expect(openSpy).not.toHaveBeenCalled()
   })
 
@@ -80,5 +82,31 @@ describe('FeedbackView', () => {
     )
 
     expect(target).toBe('_blank')
+  })
+
+  it('describes the new tab behavior to screen readers', () => {
+    render(<FeedbackView />)
+
+    const button = screen.getByRole('button', {
+      name: /submit feedback/i,
+    })
+
+    expect(button).toHaveAttribute('aria-describedby', 'new-tab-note')
+
+    expect(
+      screen.getByText(/github will open in a new tab/i),
+    ).toHaveAttribute('id', 'new-tab-note')
+  })
+
+  it('warns users that feedback creates a public GitHub issue', () => {
+    render(<FeedbackView />)
+
+    expect(
+      screen.getByText(/public github issue/i),
+    ).toBeInTheDocument()
+
+    expect(
+      screen.getByText(/private links or personal information/i),
+    ).toBeInTheDocument()
   })
 })
