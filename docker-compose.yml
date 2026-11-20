@@ -8,6 +8,8 @@ services:
     volumes:
       - ./backend:/app
       - /app/node_modules
+      # Backend code imports ../../shared, which from /app resolves to /shared.
+      - ./shared:/shared
     environment:
       - NODE_ENV=development
       - PORT=3000
