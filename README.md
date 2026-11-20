@@ -10,10 +10,28 @@ An accessibility-focused web application that helps make the web more inclusive 
 
 ### Running the Application
 
-**Option 1: Using Docker (Recommended)**
+First, clone the repo and create the backend's `.env` file. Both options
+below need it, because the backend refuses to start without
+`SESSION_SECRET` and `ENCRYPTION_KEY`.
+
 ```bash
 git clone https://github.com/codrlabs/vizably.git
 cd vizably
+cp backend/.env.example backend/.env
+```
+
+Open `backend/.env` and set `SESSION_SECRET` and `ENCRYPTION_KEY`. Run this
+command once for each and paste the output in as its value:
+
+```bash
+openssl rand -base64 32
+```
+
+Those two values are enough to run scans. Signing in also needs the GitHub App
+values; see [GitHub App setup](backend/README.md#github-app-setup-phase-1).
+
+**Option 1: Using Docker (Recommended)**
+```bash
 docker compose up --build
 ```
 
@@ -34,7 +52,7 @@ npm run dev
 ```
 
 The frontend will be available at `http://localhost:5173` and proxies
-`/api` and `/problems` to the backend at `http://localhost:3000`.
+`/api` to the backend at `http://localhost:3000`.
 
 ## 📁 Project Structure
 
