@@ -3,6 +3,7 @@
  *   - POST /api/scan            (rate limited per IP / per user)
  *   - GET  /api/scan-results    (same limiter — it also runs a live scan)
  *   - GET  /api/scans
+ *   - DELETE /api/scans        (body: { ids })
  *   - GET  /api/scans/:id
  *   - DELETE /api/scans/:id
  *
@@ -23,6 +24,8 @@ function makeScanRouter(controller, { scanRateLimit = [] } = {}) {
   // Same middleware instances, so both routes draw on one shared budget.
   router.get('/scan-results', ...scanRateLimit, controller.getScanResults);
   router.get('/scans', controller.getSavedScans);
+  // Bulk delete must be registered before /scans/:id.
+  router.delete('/scans', controller.deleteSavedScans);
   router.get('/scans/:id', controller.getSavedScan);
   router.delete('/scans/:id', controller.deleteSavedScan);
   return router;
