@@ -1,30 +1,30 @@
 <!-- gitnexus:start -->
 # GitNexus — Code Intelligence
 
-This project is indexed by GitNexus as **vizably** (997 symbols, 1729 relationships, 56 execution flows). Use the GitNexus MCP tools to understand code, assess impact, and navigate safely.
+This project is indexed by GitNexus as **vizably** (1677 symbols, 3451 relationships, 66 execution flows).
 
-> Index stale? Run `node .gitnexus/run.cjs analyze` from the project root — it auto-selects an available runner. No `.gitnexus/run.cjs` yet? `npx gitnexus analyze` (npm 11 crash → `npm i -g gitnexus`; #1939).
+> Index stale? Run `node .gitnexus/run.cjs analyze --index-only` from the project root — it auto-selects an available runner. No `.gitnexus/run.cjs` yet? Bootstrap with `npx`, `bunx`, or `pnpm dlx` — e.g. `bunx gitnexus@latest analyze` (npm 11 npx crash; #1939).
 
 ## Always Do
 
-- **MUST run impact analysis before editing any symbol.** Before modifying a function, class, or method, run `impact({target: "symbolName", direction: "upstream"})` and report the blast radius (direct callers, affected processes, risk level) to the user.
-- **MUST run `detect_changes()` before committing** to verify your changes only affect expected symbols and execution flows. For regression review, compare against the default branch: `detect_changes({scope: "compare", base_ref: "main"})`.
-- **MUST warn the user** if impact analysis returns HIGH or CRITICAL risk before proceeding with edits.
-- When exploring unfamiliar code, use `query({search_query: "concept"})` to find execution flows instead of grepping. It returns process-grouped results ranked by relevance.
-- When you need full context on a specific symbol — callers, callees, which execution flows it participates in — use `context({name: "symbolName"})`.
+- **MUST run impact before editing.** Use `impact({target: "symbolName", direction: "upstream"})` or `node .gitnexus/run.cjs impact "symbolName" --direction upstream --repo .`; report callers, processes, and risk. Never substitute grep for graph analysis.
+- **MUST analyze graph changes before committing.** Use `detect_changes({scope: "all"})` (MCP) or `node .gitnexus/run.cjs detect-changes --scope all --repo .` (CLI fallback). `partial: true` or `truncated: true` is not a clean check — a zero means unseen, not unaffected; re-run it. For regression review: `detect_changes({scope: "compare", base_ref: "main"})` or `node .gitnexus/run.cjs detect-changes --scope compare --base-ref "main" --repo .`.
+- MUST warn on HIGH/CRITICAL `risk` pre-edit; never use `riskSharedAxes` to waive a HIGH/CRITICAL `risk` warning. Compare File/symbol: MCP File omits axes; Graph-RAG expands File.
+- **MUST treat `risk: UNKNOWN` as unresolved, not as low.** An empty caller set is not evidence the symbol is unused — it can also mean the callers are not resolvable by the index (plain-object property access, dynamic dispatch, cross-language calls). `impact` pairs `UNKNOWN` with a `riskNote` saying so. Confirm with a text search before treating the symbol as safe to change or delete; do not proceed on the strength of a zero.
+- **MUST use `query({search_query: "concept"})` for concepts/flows, `context({name: "symbolName"})` for a named symbol, or `impact` for blast radius, on read-only callers, dependencies, imports, or execution flow.** Graph first; text search only for empty/`UNKNOWN`/literals.
 - For security review, `explain({target: "fileOrSymbol"})` lists taint findings (source→sink flows; needs `analyze --pdg`).
 
 ## Never Do
 
-- NEVER edit a function, class, or method without first running `impact` on it.
-- NEVER ignore HIGH or CRITICAL risk warnings from impact analysis.
+- NEVER edit a function, class, or method before MCP/CLI impact analysis.
+- NEVER ignore HIGH or CRITICAL risk warnings from impact analysis, and never read `UNKNOWN` as an all-clear — it means the walk could not answer, which is the one verdict that requires confirming by other means.
 - NEVER rename symbols with find-and-replace — use `rename` which understands the call graph.
-- NEVER commit changes without running `detect_changes()` to check affected scope.
+- NEVER commit before MCP/CLI graph change analysis.
 
 ## Resources
 
 | Resource | Use for |
-|----------|---------|
+| --- | --- |
 | `gitnexus://repo/vizably/context` | Codebase overview, check index freshness |
 | `gitnexus://repo/vizably/clusters` | All functional areas |
 | `gitnexus://repo/vizably/processes` | All execution flows |
@@ -33,13 +33,13 @@ This project is indexed by GitNexus as **vizably** (997 symbols, 1729 relationsh
 ## CLI
 
 | Task | Read this skill file |
-|------|---------------------|
-| Understand architecture / "How does X work?" | `.claude/skills/gitnexus/gitnexus-exploring/SKILL.md` |
-| Blast radius / "What breaks if I change X?" | `.claude/skills/gitnexus/gitnexus-impact-analysis/SKILL.md` |
-| Trace bugs / "Why is X failing?" | `.claude/skills/gitnexus/gitnexus-debugging/SKILL.md` |
-| Rename / extract / split / refactor | `.claude/skills/gitnexus/gitnexus-refactoring/SKILL.md` |
-| Tools, resources, schema reference | `.claude/skills/gitnexus/gitnexus-guide/SKILL.md` |
-| Index, status, clean, wiki CLI commands | `.claude/skills/gitnexus/gitnexus-cli/SKILL.md` |
+| --- | --- |
+| Understand architecture / "How does X work?" | `.claude/skills/gitnexus-exploring/SKILL.md` |
+| Blast radius / "What breaks if I change X?" | `.claude/skills/gitnexus-impact-analysis/SKILL.md` |
+| Trace bugs / "Why is X failing?" | `.claude/skills/gitnexus-debugging/SKILL.md` |
+| Rename / extract / split / refactor | `.claude/skills/gitnexus-refactoring/SKILL.md` |
+| Tools, resources, schema reference | `.claude/skills/gitnexus-guide/SKILL.md` |
+| Index, status, clean, wiki CLI commands | `.claude/skills/gitnexus-cli/SKILL.md` |
 
 <!-- gitnexus:end -->
 
@@ -70,21 +70,26 @@ human-readable accessibility report. Two halves, one wire contract.
 
 vizably keeps **no database of its own**. A signed-in user's entire account
 (profile, settings, saved scans) lives in **storage they already own**: one
-**GitHub repository** or one **Google Drive folder**. GitHub/Google OAuth is used
-only to *identify* the user and get an API token; the user-owned store is the
-source of truth. This is what makes the product cheap to offer to everyone — no
+**GitHub repository**. GitHub sign-in is used only to *identify* the user; repo
+access comes from the Vizably GitHub App. The user-owned store is the source of
+truth. This is what makes the product cheap to offer to everyone — no
 per-user hosting, no lock-in; the account is portable across devices.
 
-The connection UX is **browse → select → validate → load-or-init**:
+The connection UX is **sign in → find or create the store → load-or-init**:
 
-1. User connects GitHub or Google (OAuth).
-2. They **see the repos/folders they already have** and **select one**
-   (GitHub: backend lists repos; Google: client-side **Google Picker**, because
-   `drive.file` cannot browse existing folders).
-3. vizably runs a **fit-check** (`POST /api/auth/storage/validate`) — does this
-   storage hold a valid vizably account store? → `loadable` / `initializable` /
-   `unrelated` / `incompatible` / `invalid` (+ capabilities).
-4. vizably **loads** the existing account back, or **initializes** the store.
+1. User signs in with GitHub.
+2. vizably **finds the existing store** (`GET /api/auth/storage/discover`): the
+   store saved in the session, then a repo named `viz_scans`, then the user's
+   repo list. A repo counts as a store only if it has a `vizably.json` manifest,
+   never because of its name.
+3. **No store found** → vizably **creates one** (`POST /api/auth/storage/create`):
+   `viz_scans`, or `viz_scans-2`, `viz_scans-3`, … if the name is taken. The user
+   never names or picks a repo.
+4. **One store** → it is used directly. **More than one** → only then is a
+   picker shown.
+5. vizably runs a **fit-check** on the store (`loadable` / `initializable` /
+   `unrelated` / `incompatible` / `invalid` + capabilities), then **loads** the
+   existing account or **initializes** the store (`POST /api/auth/storage`).
 
 On-disk contract (the "data needed to load back the account"): a root
 `vizably.json` manifest + a `scans/` folder (`index.json` cache + one immutable
@@ -94,25 +99,25 @@ On-disk contract (the "data needed to load back the account"): a root
 When working on auth/storage, treat these as the source of truth and keep them in
 sync with the code:
 
-- [`docs/guides/auth_storage_guide/githubGoogleAuthStorageImplementation.md`](docs/guides/auth_storage_guide/githubGoogleAuthStorageImplementation.md)
-  — auth flow, endpoints, scopes, frontend design.
-- [`docs/guides/auth_storage_guide/accountStorageContract.md`](docs/guides/auth_storage_guide/accountStorageContract.md)
-  — manifest + scans layout + fit-check + concurrency rules.
+- [Account storage](https://open.codrlabs.com/vizably/account-storage/) on
+  Codrlabs Open — the conceptual guide: flow, manifest, fit-check, concurrency.
+- `backend/README.md` § Endpoints and § GitHub App setup — the current routes
+  and local/production GitHub App configuration.
 - [`docs/guides/auth_storage_guide/TODO.md`](docs/guides/auth_storage_guide/TODO.md)
   — implementation checklist.
 
 Non-negotiables for this subsystem:
 
 - **No tokens/secrets in the store.** OAuth tokens are encrypted at rest in the
-  session (AES-256-GCM), never written to the repo/folder.
+  session (AES-256-GCM), never written to the repo.
 - **Possession-based identity by default** — whoever can read/write the store can
   load the account; treat the storage ACL as the account ACL. Record stable
-  provider ids (repo node id / Drive folder id / owner id), not names.
+  provider ids (repo node id / owner id), not names.
 - **Concurrency & partial writes are expected** — multiple devices and
   collaborators touch the store. Scan files are immutable; caches reconcile on
-  load; GitHub writes use blob `sha`, Drive writes use generation/ETag.
-- **Scope tradeoffs are real and must be disclosed in the UI**, not just docs
-  (GitHub OAuth `repo` is all-or-nothing; Google browsing needs Picker or
-  `drive.metadata.readonly`).
+  load; GitHub writes use the blob `sha` for optimistic concurrency.
+- **Access tradeoffs are real and must be disclosed in the UI**, not just docs
+  (sign-in asks only for `read:user`; repo access comes from the Vizably GitHub
+  App installation, which the user can limit to the one store repo).
 - This **supersedes** the Postgres + JWT sketch in the Phase 5 roadmap — there is
   no project DB.
