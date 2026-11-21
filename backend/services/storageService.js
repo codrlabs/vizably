@@ -24,6 +24,15 @@ const SUPPORTED_SCHEMA_VERSION = 1;
 const GOOGLE_NOT_AVAILABLE = 'Google storage is not available until Phase 3';
 
 /**
+ * GitHub reports rate limits as 429, or as 403 with "rate limit" in the
+ * message. Discovery must rethrow these: treating one as "no store here" can
+ * make the caller create a duplicate store.
+ */
+function isGitHubRateLimit(err) {
+  return err?.status === 429 || (err?.status === 403 && /rate limit/i.test(String(err?.message)));
+}
+
+/**
  * @typedef {'loadable' | 'initializable' | 'unrelated' | 'incompatible' | 'invalid'} FitCheckStatus
  */
 
@@ -338,7 +347,7 @@ class StorageService {
         return { provider: 'github', stores: [hit], source: 'expected-name' };
       }
     } catch (err) {
-      if (err?.status === 429 || (err?.status === 403 && /rate limit/i.test(String(err.message)))) {
+      if (isGitHubRateLimit(err)) {
         throw err;
       }
     }
@@ -356,7 +365,7 @@ class StorageService {
           stores.push(hit);
         }
       } catch (err) {
-        if (err?.status === 429 || (err?.status === 403 && /rate limit/i.test(String(err.message)))) {
+        if (isGitHubRateLimit(err)) {
           throw err;
         }
         // Skip repos we cannot inspect.
@@ -1237,7 +1246,7 @@ class StorageService {
       if (err.status === 404) {
         return this._invalidResult('not_found');
       }
-      if (err.status === 403) {
+      if (err.status === 403 && !isGitHubRateLimit(err)) {
         return {
           status: 'invalid',
           reason: 'access_denied',
@@ -1415,7 +1424,10 @@ class StorageService {
           canWrite = true;
         }
       }
-    } catch {
+    } catch (err) {
+      if (isGitHubRateLimit(err)) {
+        throw err;
+      }
       // Classic OAuth tokens or older mocks — fall back to repos.get below.
     }
 
