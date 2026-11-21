@@ -5,10 +5,9 @@ saved report from the user’s store without wiping the account or other scans.
 
 Related sources of truth:
 
-- [`accountStorageContract.md`](./accountStorageContract.md) — on-disk layout,
-  truth vs cache, concurrency
-- [`githubGoogleAuthStorageImplementation.md`](./githubGoogleAuthStorageImplementation.md)
-  — auth/storage API conventions
+- [Account storage](https://open.codrlabs.com/vizably/account-storage/) on
+  Codrlabs Open — on-disk layout, truth vs cache, concurrency
+- `backend/README.md` — auth/storage API conventions and current routes
 - [`TODO.md`](./TODO.md) — phase checklist (add a scan-delete checkbox when you ship)
 - Architecture intent: [`docs/plans/architecture-map.md`](../../plans/architecture-map.md)
   (per-row “Delete this scan?” → `DELETE /api/scans/:id`)
@@ -94,7 +93,7 @@ UX notes:
 
 ## 3. On-disk contract (what you mutate)
 
-From [`accountStorageContract.md`](./accountStorageContract.md):
+From [Account storage](https://open.codrlabs.com/vizably/account-storage/):
 
 ```
 <root>/
@@ -316,9 +315,7 @@ the error — the user asked to delete.
 
 ### 6.4 Docs table
 
-Add a row to the API table in
-`githubGoogleAuthStorageImplementation.md` (and `backend/README.md` if it lists
-scan routes):
+Add a row to the API table in `backend/README.md`:
 
 | Method | Path | Notes |
 |--------|------|--------|
@@ -403,11 +400,11 @@ if the team asks to omit them.
 When the code lands:
 
 - [ ] This guide — mark the acceptance checklist below.
-- [ ] [`accountStorageContract.md`](./accountStorageContract.md) — short note under
-      write atomicity or a “Deleting a scan” bullet: remove file + index entry;
-      caches rebuildable; Git history may retain blobs.
-- [ ] [`githubGoogleAuthStorageImplementation.md`](./githubGoogleAuthStorageImplementation.md)
-      — API table row for `DELETE /api/scans/:id`.
+- [ ] [Account storage](https://open.codrlabs.com/vizably/account-storage/) on
+      Codrlabs Open — short note under write atomicity or a "Deleting a scan"
+      bullet: remove file + index entry; caches rebuildable; Git history may
+      retain blobs.
+- [ ] `backend/README.md` — API table row for `DELETE /api/scans/:id`.
 - [ ] [`TODO.md`](./TODO.md) — checkbox under scan/storage follow-ups.
 - [ ] `backend/README.md` route table if it lists scan endpoints.
 
