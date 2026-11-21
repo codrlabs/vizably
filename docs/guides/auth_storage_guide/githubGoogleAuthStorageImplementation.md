@@ -363,6 +363,7 @@ Session cookies, not Bearer tokens. All calls use `credentials: 'include'`; no
 - `listScans()` → `GET /api/scans`
 - `getSavedScan(id)` → `GET /api/scans/:id`
 - `deleteScan(id)` → `DELETE /api/scans/:id`
+- `deleteScans(ids)` → `DELETE /api/scans` (body `{ ids }`)
 - `runScan`, `getScanResults`, `getProblem` unchanged.
 
 For Google, selection is done with the **Google Picker** client library; the

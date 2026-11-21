@@ -313,15 +313,40 @@ function AppRoutes() {
   /** Remove one saved scan from attached storage and refresh the dashboard list. */
   const deleteSaved = async (s) => {
     if (!s?.id) return
-    const result = await apiClient.deleteScan(s.id)
-    setUser((prev) => mergeAccountUpdate(prev, {
-      scanCount: result.scanCount,
-      scans: result.scans,
-    }))
+    try {
+      const result = await apiClient.deleteScan(s.id)
+      setUser((prev) => mergeAccountUpdate(prev, {
+        scanCount: result.scanCount,
+        scans: result.scans,
+      }))
+    } catch (err) {
+      // Already gone (deleted on another device) — same outcome; resync the list.
+      if (err.status !== 404) throw err
+      await refreshUser().catch(() => {})
+    }
     if (location.search.includes(`scanId=${encodeURIComponent(s.id)}`)) {
       setScan(null)
       setProblem(null)
       navigate(PATHS.dashboard)
+    }
+  }
+
+  /**
+   * Remove the selected saved scans in one storage write. Only the ids the user
+   * saw are sent, so scans saved on another device since are never swept up.
+   */
+  const deleteManySaved = async (ids) => {
+    if (!ids?.length) return
+    try {
+      const result = await apiClient.deleteScans(ids)
+      setUser((prev) => mergeAccountUpdate(prev, {
+        scanCount: result.scanCount,
+        scans: result.scans,
+      }))
+    } catch (err) {
+      // Resync so the list (and any retry) reflects what is actually left.
+      await refreshUser().catch(() => {})
+      throw err
     }
   }
 
@@ -417,11 +442,14 @@ function AppRoutes() {
     )
   }
 
-  function RequireStorage({ children }) {
+  // A plain function, not a component: a component declared inside AppRoutes
+  // is a new type on every render, so each user refresh would remount the whole
+  // page and wipe its state (selection, focus, error messages).
+  const requireStorage = (page) => {
     if (authLoading) return <AuthLoadingIndicator />
     if (!authed) return <Navigate to={PATHS.signin} replace />
     if (!storageReady) return <Navigate to={PATHS.connect} replace />
-    return children
+    return page
   }
 
   if (authLoading && (route === 'dashboard' || route === 'account' || route === 'connect')) {
@@ -451,32 +479,29 @@ function AppRoutes() {
         <Route path={PATHS.connect} element={<ConnectRoute />} />
         <Route
           path={PATHS.dashboard}
-          element={(
-            <RequireStorage>
-              <DashboardView
-                onNav={nav}
-                onOpen={openSaved}
-                onDelete={deleteSaved}
-                saved={savedScans}
-                provider={provider}
-                user={shellUser}
-                storage={user?.storage}
-              />
-            </RequireStorage>
+          element={requireStorage(
+            <DashboardView
+              onNav={nav}
+              onOpen={openSaved}
+              onDelete={deleteSaved}
+              onDeleteMany={deleteManySaved}
+              saved={savedScans}
+              provider={provider}
+              user={shellUser}
+              storage={user?.storage}
+            />,
           )}
         />
         <Route
           path={PATHS.account}
-          element={(
-            <RequireStorage>
-              <AccountView
-                onSignOut={signOut}
-                onExport={exportData}
-                user={user}
-                shellUser={shellUser}
-                provider={provider}
-              />
-            </RequireStorage>
+          element={requireStorage(
+            <AccountView
+              onSignOut={signOut}
+              onExport={exportData}
+              user={user}
+              shellUser={shellUser}
+              provider={provider}
+            />,
           )}
         />
         <Route path={PATHS.privacy} element={<LegalView doc="privacy" onNav={nav} />} />
