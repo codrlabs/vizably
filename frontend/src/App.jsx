@@ -14,6 +14,7 @@ import ConnectView from './views/ConnectView'
 import DashboardView from './views/DashboardView'
 import AccountView from './views/AccountView'
 import LegalView from './views/LegalView'
+import FeedbackView from './views/FeedbackView'
 import NotFoundView from './views/NotFoundView'
 import ScanProgressIndicator from './components/ScanProgressIndicator'
 import { apiClient } from './lib/apiClient'
@@ -40,6 +41,7 @@ const PATHS = {
   account: '/account',
   privacy: '/privacy',
   terms: '/terms',
+  feedback: '/feedback',
 }
 
 function routeKeyFor(pathname) {
@@ -479,6 +481,7 @@ function AppRoutes() {
         />
         <Route path={PATHS.privacy} element={<LegalView doc="privacy" onNav={nav} />} />
         <Route path={PATHS.terms} element={<LegalView doc="terms" onNav={nav} />} />
+        <Route path={PATHS.feedback} element={<FeedbackView />} />
         <Route path="*" element={<NotFoundView onNav={nav} />} />
       </Routes>
     </AppShell>
