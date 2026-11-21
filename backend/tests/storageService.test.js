@@ -1584,6 +1584,65 @@ test('discoverAccountStores rethrows a rate limit hit while validating a listed 
   );
 });
 
+// The two tests below keep the branch lookup and manifest read on a healthy
+// client, so the rate limit lands only on the capabilities probe, which runs
+// on the user client.
+function discoveryClients(userClientOptions) {
+  const reader = createMockGitHubClient({
+    files: {
+      'vizably.json': { content: JSON.stringify(manifest()), sha: 'sha-manifest' },
+    },
+  });
+  const userClient = createMockGitHubClient(userClientOptions);
+  return { githubClient: reader, githubUserClient: userClient };
+}
+
+function notFound() {
+  const err = new Error('Not Found');
+  err.status = 404;
+  return err;
+}
+
+test('discoverAccountStores rethrows a rate limit 403 from the capabilities probe', async () => {
+  // Regression: _validateGitHubStorage turned every 403 from the probe into
+  // access_denied, so a rate limit made discovery skip the real store and
+  // return no stores, which leads the caller to create a second one.
+  const storageService = new StorageService();
+  const clients = discoveryClients({
+    repoGet: async ({ repo }) => {
+      if (repo === 'viz_scans') throw notFound();
+      const err = new Error('API rate limit exceeded for user ID 42.');
+      err.status = 403;
+      throw err;
+    },
+  });
+
+  await assert.rejects(
+    () => storageService.discoverAccountStores('github', clients),
+    /rate limit/i,
+  );
+});
+
+test('discoverAccountStores rethrows a rate limit hit while the probe lists installations', async () => {
+  // Regression: the probe swallowed every installation-listing error and
+  // fell back to repos.get, hiding the rate limit.
+  const storageService = new StorageService();
+  const limited = new Error('You have exceeded a secondary rate limit.');
+  limited.status = 429;
+  const clients = discoveryClients({
+    installationProbeError: limited,
+    repoGet: async ({ repo }) => {
+      if (repo === 'viz_scans') throw notFound();
+      return { data: { default_branch: 'main', permissions: { pull: true, push: true } } };
+    },
+  });
+
+  await assert.rejects(
+    () => storageService.discoverAccountStores('github', clients),
+    /rate limit/i,
+  );
+});
+
 test('discoverAccountStores returns every listed store with a manifest', async () => {
   const storageService = new StorageService();
   const client = createMockGitHubClient({
